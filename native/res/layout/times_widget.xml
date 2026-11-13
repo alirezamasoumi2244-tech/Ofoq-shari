@@ -1,0 +1,51 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/wgt_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="14dp"
+    android:background="#E60A3D2E">
+
+    <TextView
+        android:id="@+id/wgt_city"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="افق شرعی"
+        android:textColor="#B3E7F6EE"
+        android:textSize="12sp"
+        android:textDirection="rtl" />
+
+    <TextView
+        android:id="@+id/wgt_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="اذان بعدی"
+        android:textColor="#FFFFFFFF"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:textDirection="rtl"
+        android:paddingTop="4dp" />
+
+    <TextView
+        android:id="@+id/wgt_time"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="--:--"
+        android:textColor="#FF46E3AE"
+        android:textSize="28sp"
+        android:textStyle="bold"
+        android:fontFamily="sans-serif-medium"
+        android:textDirection="ltr"
+        android:paddingTop="2dp" />
+
+    <TextView
+        android:id="@+id/wgt_sub"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="#B3E7F6EE"
+        android:textSize="12sp"
+        android:textDirection="rtl"
+        android:paddingTop="2dp" />
+</LinearLayout>

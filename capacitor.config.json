@@ -1,0 +1,6 @@
+{
+  "appId": "ir.azango.app",
+  "appName": "افق شرعی",
+  "webDir": "www",
+  "android": { "allowMixedContent": false }
+}
