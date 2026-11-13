@@ -45,6 +45,7 @@
     setupDone: false,
     method: 'tehran',
     fontScale: 1,
+    uiMode: 'normal', // normal | elder
     highContrast: false,
     theme: 'green',          // green | blue | sand
     qada: { fajr: 0, dhuhr: 0, asr: 0, maghrib: 0, isha: 0, fast: 0 },
@@ -58,7 +59,7 @@
     shakeDhikr: true,
     amoled: false
   };
-  const APP_VERSION = '1.3.0';
+  const APP_VERSION = '1.6.0';
   const METHOD_LABELS = {
     tehran: 'مؤسسه ژئوفیزیک تهران',
     mwl: 'لیگ جهانی مسلمانان',
@@ -83,6 +84,7 @@
       if (raw && o.setupDone === undefined) m.setupDone = true;
       if (!m.method || !METHOD_LABELS[m.method]) m.method = 'tehran';
       if (![0.9, 1, 1.15, 1.3].includes(m.fontScale)) m.fontScale = 1;
+      if (m.uiMode !== 'elder') m.uiMode = 'normal';
       return m;
     } catch (e) { return JSON.parse(JSON.stringify(DEF)); }
   }
@@ -101,10 +103,13 @@
     return t;
   }
   function applyUiPrefs() {
-    document.documentElement.style.setProperty('--fs', (S.fontScale || 1));
-    document.body.classList.toggle('hc', !!S.highContrast);
+    const elder = S.uiMode === 'elder';
+    document.body.classList.toggle('elder', elder);
+    document.body.classList.toggle('hc', !!S.highContrast || elder);
     document.body.dataset.theme = S.theme || 'green';
     document.body.classList.toggle('amoled', !!S.amoled);
+    // elder has its own scale in CSS; normal uses fontScale
+    document.documentElement.style.setProperty('--fs', elder ? 1 : (S.fontScale || 1));
   }
   const dayStart = (p, offset) => { const c = cityNow(p.tz); return Date.UTC(c.getUTCFullYear(), c.getUTCMonth(), c.getUTCDate()) + (offset || 0) * 86400000; };
 
@@ -167,7 +172,7 @@
   const nav = document.getElementById('nav');
   let page = 'home', lastDay = '';
   const NAV = [['home', ic('home'), 'خانه'], ['times', ic('clock'), 'اوقات'], ['tools', ic('moon'), 'ابزار'], ['settings', ic('gear'), 'تنظیمات']];
-  const SUB = { city: 'انتخاب شهر', azan: 'تنظیمات اذان', muezzin: 'مؤذن و فایل صوتی', notif: 'اعلان‌ها', about: 'درباره برنامه', method: 'روش محاسبه', qibla: 'قبله‌نما', display: 'نمایش', backup: 'پشتیبان‌گیری', privacy: 'حریم خصوصی', tools: 'ابزارها', dhikr: 'ذکرشمار', rakat: 'رکعت‌شمار', qada: 'نماز و روزه قضا', convert: 'تبدیل تاریخ', duas: 'ادعیه و اذکار', names: 'اسماء الحسنی', wudu: 'وضو و نماز', week: 'اوقات هفته', faq: 'راهنما', compare: 'مقایسه روش‌ها' };
+  const SUB = { city: 'انتخاب شهر', azan: 'تنظیمات اذان', muezzin: 'مؤذن و فایل صوتی', notif: 'اعلان‌ها', about: 'درباره برنامه', method: 'روش محاسبه', qibla: 'قبله‌نما', display: 'نمایش و حالت', backup: 'پشتیبان‌گیری', privacy: 'حریم خصوصی', tools: 'ابزارها', dhikr: 'ذکرشمار', rakat: 'رکعت‌شمار', qada: 'نماز و روزه قضا', convert: 'تبدیل تاریخ', duas: 'ادعیه و اذکار', names: 'اسماء الحسنی', wudu: 'وضو و نماز', week: 'اوقات هفته', faq: 'راهنما', compare: 'مقایسه روش‌ها' };
 
   function go(pg) {
     if (page === 'qibla' && pg !== 'qibla') stopQiblaCompass();
@@ -208,31 +213,31 @@
     const extra = [];
     if (S.showImsak && tms.imsak) extra.push(['امساک', tms.imsak.min]);
     if (S.showMidnight && tms.midnight) extra.push(['نیمه‌شب', tms.midnight.min]);
+    const prayerCards = PRAYERS.map(([k, n]) =>
+      '<div class="ptime' + (nx && nx.key === k ? ' on' : '') + '"><i>' + ICON[k] + '</i><span class="pt-n">' + SHORT[k] + '</span><b class="pt-t">' + hm(tms[k].min) + '</b></div>'
+    ).join('') + extra.map(([n, min]) =>
+      '<div class="ptime dim"><span class="pt-n">' + n + '</span><b class="pt-t">' + hm(min) + '</b></div>'
+    ).join('');
     app.innerHTML =
-      '<section class="hero clean">' +
-        '<div class="hero-top"><span class="pill soft">' + ic('pin') + ' ' + esc(p.name) + '</span>' +
-        (streak ? '<span class="pill streak">پیوستگی ' + fa(streak) + ' روز</span>' : '') + '</div>' +
-        '<div id="clock" class="clock">--:--:--</div>' +
-        '<div class="dates"><div class="d1">' + esc(d.shamsi) + '</div><div class="d2">' + esc(d.qamari) + '</div></div>' +
-        occHtml +
-      '</section>' +
+      '<header class="bar">' +
+        '<div class="bar-city">' + ic('pin') + ' <b>' + esc(p.name) + '</b></div>' +
+        '<div id="clock" class="bar-clock">--:--</div>' +
+      '</header>' +
+      '<div class="date-line"><span>' + esc(d.shamsi) + '</span><span class="sep">·</span><span>' + esc(d.qamari) + '</span></div>' +
+      occHtml +
       ramadan +
-      '<section class="next clean">' +
-        '<div class="next-grid">' +
-          '<div><div class="lbl">اذان بعدی</div><div class="nx-name" id="nxName">' + (nx ? SHORT[nx.key] : '—') + '</div></div>' +
-          '<div id="cd" class="cd">--:--:--</div>' +
-        '</div>' +
+      '<section class="focus">' +
+        '<div class="focus-label">اذان بعدی</div>' +
+        '<div class="focus-name" id="nxName">' + (nx ? SHORT[nx.key] : '—') + '</div>' +
+        '<div id="cd" class="focus-cd">--:--:--</div>' +
+        (streak ? '<div class="focus-streak">پیوستگی ' + fa(streak) + ' روز</div>' : '') +
       '</section>' +
-      '<section class="list clean">' +
-        PRAYERS.map(([k, n]) =>
-          '<div class="row' + (nx && nx.key === k ? ' hl' : '') + '"><span><i>' + ICON[k] + '</i>' + n + '</span><b>' + hm(tms[k].min) + '</b></div>').join('') +
-        extra.map(([n, min]) => '<div class="row dim"><span>' + n + '</span><b>' + hm(min) + '</b></div>').join('') +
-      '</section>' +
-      '<div class="actions">' +
-        '<button class="btn primary" id="namazMode">' + ic('check') + ' حالت نماز</button>' +
-        '<button class="btn ghost" onclick="go(\'qibla\')">' + ic('compass') + ' قبله</button>' +
-        '<button class="btn ghost" onclick="go(\'dhikr\')">' + ic('moon') + ' ذکر</button>' +
-        '<button class="btn ghost" onclick="go(\'compare\')">مقایسه روش‌ها</button>' +
+      '<section class="ptime-grid">' + prayerCards + '</section>' +
+      '<div class="dock">' +
+        '<button class="dock-btn main" id="namazMode"><i>' + ic('check') + '</i><span>نماز</span></button>' +
+        '<button class="dock-btn" onclick="go(\'qibla\')"><i>' + ic('compass') + '</i><span>قبله</span></button>' +
+        '<button class="dock-btn" onclick="go(\'dhikr\')"><i>' + ic('moon') + '</i><span>ذکر</span></button>' +
+        '<button class="dock-btn" onclick="go(\'times\')"><i>' + ic('clock') + '</i><span>اوقات</span></button>' +
       '</div>';
     tick();
   }
@@ -258,7 +263,7 @@
        ['azan', ic('sound'), 'تنظیمات اذان', 'روشن/خاموش، صدا، آزمایش'],
        ['muezzin', ic('mic'), 'مؤذن و فایل صوتی', muezzin().name],
        ['notif', ic('bell'), 'اعلان‌ها', 'قبل از اذان، باتری'],
-       ['display', ic('text'), 'نمایش و دسترسی‌پذیری', 'اندازه فونت و کنتراست'],
+       ['display', ic('text'), 'نمایش و حالت', (S.uiMode === 'elder' ? 'سالمندان' : 'عادی') + ' · تم و ظاهر'],
        ['backup', ic('save'), 'پشتیبان‌گیری تنظیمات', 'خروجی و بازیابی'],
        ['privacy', ic('shield'), 'حریم خصوصی', 'سیاست حفظ حریم خصوصی'],
        ['about', ic('info'), 'درباره برنامه', 'نسخه ' + APP_VERSION]]
@@ -309,7 +314,7 @@
   }
   function renderAbout() {
     app.innerHTML = header('درباره برنامه', 'settings') +
-      '<section class="card"><h3>افق شرعی</h3><p><b>نسخه ' + fa(APP_VERSION) + '</b> — اوقات شرعی، اذان و قبله‌نما برای کاربران فارسی‌زبان، با رابط بزرگ و ساده.</p>' +
+      '<section class="card"><h3>افق شرعی</h3><p><b>نسخه ' + fa(APP_VERSION) + '</b> · آخرین به‌روزرسانی: آبان ۱۴۰۵ — اوقات شرعی، اذان و قبله‌نما برای کاربران فارسی‌زبان، با رابط بزرگ و ساده.</p>' +
       '<p>روش پیش‌فرض: مؤسسه ژئوفیزیک دانشگاه تهران. می‌توانید روش محاسبه را در تنظیمات تغییر دهید.</p>' +
       '<p class="hint">اوقات را با تقویم رسمی شهر خود مقایسه کنید؛ اختلاف چند دقیقه‌ای ممکن است. از «اصلاح دقیقه» در تنظیمات اذان استفاده کنید.</p>' +
       '<div class="form"><label>اصلاح تاریخ قمری<select id="hj">' + [-2, -1, 0, 1, 2].map(v => '<option value="' + v + '"' + (S.hijriOffset === v ? ' selected' : '') + '>' + (v > 0 ? '+' : '') + fa(v) + ' روز</option>').join('') + '</select></label></div></section>' +
@@ -413,22 +418,34 @@
     setTimeout(() => startQiblaCompass(deg), 50);
   }
   function renderDisplay() {
-    const scales = [[0.9, 'کوچک'], [1, 'متوسط (پیش‌فرض)'], [1.15, 'بزرگ'], [1.3, 'خیلی بزرگ']];
-    app.innerHTML = header('نمایش و دسترسی‌پذیری', 'settings') +
-      '<section class="form"><label>اندازه نوشته<select id="fontScale">' +
+    const elder = S.uiMode === 'elder';
+    const scales = [[0.9, 'کوچک'], [1, 'متوسط'], [1.15, 'بزرگ'], [1.3, 'خیلی بزرگ']];
+    app.innerHTML = header('نمایش و حالت', 'settings') +
+      '<p class="hint">حالت رابط را انتخاب کنید. حالت سالمندان نوشته‌ها و دکمه‌ها را خیلی بزرگ‌تر می‌کند.</p>' +
+      '<div class="mode-pick">' +
+        '<button type="button" class="mode-card' + (!elder ? ' on' : '') + '" data-uimode="normal">' +
+          '<b>عادی</b><small>ظریف و جمع‌وجور مناسب همه</small></button>' +
+        '<button type="button" class="mode-card' + (elder ? ' on' : '') + '" data-uimode="elder">' +
+          '<b>سالمندان</b><small>دکمه‌های خیلی بزرگ و خوانا</small></button>' +
+      '</div>' +
+      (elder ? '' :
+      '<section class="form"><label>اندازه نوشته (حالت عادی)<select id="fontScale">' +
       scales.map(([v, n]) => '<option value="' + v + '"' + (S.fontScale === v ? ' selected' : '') + '>' + n + '</option>').join('') +
-      '</select></label></section>' +
-      '<section class="menu"><div class="mi"><span><b>کنتراست بالا</b><small>پس‌زمینه تیره‌تر و متن روشن‌تر</small></span>' +
-      '<button class="sw' + (S.highContrast ? ' on' : '') + '" data-hc="1" aria-label="کنتراست بالا"></button></div></section>' +
+      '</select></label></section>') +
+      '<h2>ظاهر</h2><section class="menu">' +
+      [['green','سبز'],['blue','آبی'],['sand','خاکی']].map(([id,n]) =>
+        '<button class="mi' + (S.theme === id ? ' sel' : '') + '" data-theme="' + id + '"><span><b>تم ' + n + '</b></span><em>' + (S.theme === id ? ic('check') : '') + '</em></button>').join('') +
+      '</section>' +
       '<section class="menu">' +
-      '<div class="mi"><span><b>تم سیاه خالص (AMOLED)</b><small>صرفه‌جویی باتری</small></span>' +
-      '<button class="sw' + (S.amoled ? ' on' : '') + '" data-amoled="1"></button></div>' +
-      '<div class="mi"><span><b>حالت رمضان</b><small>نمایش امساک و افطار برجسته</small></span>' +
-      '<button class="sw' + (S.ramadanMode ? ' on' : '') + '" data-ramadan="1"></button></div>' +
-      '<div class="mi"><span><b>تکان برای ذکر</b><small>با تکان دادن گوشی بشمار</small></span>' +
-      '<button class="sw' + (S.shakeDhikr ? ' on' : '') + '" data-shake="1"></button></div></section>' +
-      '<p class="hint">این تنظیمات برای سالمندان و خوانایی بهتر در نور کم طراحی شده‌اند.</p>';
+        '<div class="mi"><span><b>کنتراست بالا</b><small>متن روشن‌تر</small></span><button class="sw' + (S.highContrast ? ' on' : '') + '" data-hc="1"></button></div>' +
+        '<div class="mi"><span><b>سیاه خالص (AMOLED)</b><small>صرفه‌جویی باتری</small></span><button class="sw' + (S.amoled ? ' on' : '') + '" data-amoled="1"></button></div>' +
+        '<div class="mi"><span><b>حالت رمضان</b><small>امساک و افطار برجسته</small></span><button class="sw' + (S.ramadanMode ? ' on' : '') + '" data-ramadan="1"></button></div>' +
+        '<div class="mi"><span><b>نمایش امساک</b></span><button class="sw' + (S.showImsak ? ' on' : '') + '" data-imsak="1"></button></div>' +
+        '<div class="mi"><span><b>نمایش نیمه‌شب شرعی</b></span><button class="sw' + (S.showMidnight ? ' on' : '') + '" data-midn="1"></button></div>' +
+        '<div class="mi"><span><b>تکان برای ذکر</b></span><button class="sw' + (S.shakeDhikr ? ' on' : '') + '" data-shake="1"></button></div>' +
+      '</section>';
   }
+
   function renderBackup() {
     app.innerHTML = header('پشتیبان‌گیری تنظیمات', 'settings') +
       '<p class="hint">می‌توانید تمام تنظیمات (شهر، اذان‌ها، اصلاحات و …) را در یک فایل ذخیره کنید و بعداً بازیابی کنید. فایل صوتی اذان در این پشتیبان نیست.</p>' +
@@ -443,7 +460,7 @@
       '<p>موقعیت GPS فقط وقتی خودتان دکمه «موقعیت فعلی» را بزنید استفاده می‌شود و روی دستگاه می‌ماند؛ به اینترنت یا شخص ثالث فرستاده نمی‌شود.</p>' +
       '<p>اعلان‌ها و سرویس پخش اذان فقط برای عملکرد برنامه لازم هستند و هیچ آمار یا ردیابی جمع‌آوری نمی‌شود.</p>' +
       '<p>فایل‌های صوتی اذان که وارد می‌کنید فقط در حافظه خصوصی برنامه کپی می‌شوند.</p>' +
-      '<p class="hint">آخرین به‌روزرسانی: آبان ۱۴۰۴ · نسخه ' + fa(APP_VERSION) + '</p></section>';
+      '<p class="hint">آخرین به‌روزرسانی: آبان ۱۴۰۵ · نسخه ' + fa(APP_VERSION) + '</p></section>';
   }
   function renderSetup() {
     const selected = place();
@@ -755,6 +772,10 @@ function renderFaq() {
     }
     if (el.dataset.method) {
       S.method = el.dataset.method; save(); renderMethod();
+    }
+    if (el.dataset.uimode) {
+      S.uiMode = el.dataset.uimode;
+      applyUiPrefs(); save(false); renderDisplay();
     }
     if (el.dataset.hc) {
       S.highContrast = !S.highContrast; applyUiPrefs(); save(false); renderDisplay();

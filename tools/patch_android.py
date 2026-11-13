@@ -103,7 +103,7 @@ for bg in bg_candidates:
     if "ic_launcher_background" in txt:
         txt2 = re.sub(
             r'(<color\s+name="ic_launcher_background">)[^<]*(</color>)',
-            r"\1#05221a\2",
+            r"\1#0A3D2E\2",
             txt,
         )
         if txt2 != txt:
@@ -117,7 +117,7 @@ else:
     open(os.path.join(values, "ic_launcher_background.xml"), "w", encoding="utf-8").write(
         '<?xml version="1.0" encoding="utf-8"?>\n'
         '<resources>\n'
-        '    <color name="ic_launcher_background">#05221a</color>\n'
+        '    <color name="ic_launcher_background">#0A3D2E</color>\n'
         '</resources>\n'
     )
 
