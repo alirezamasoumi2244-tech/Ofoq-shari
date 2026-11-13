@@ -1,5 +1,5 @@
-        <receiver android:name="ir.azango.app.AzanReceiver" android:exported="false" />
-        <receiver android:name="ir.azango.app.BootReceiver" android:exported="true">
+        <receiver android:name="com.ofoqshari.bz.AzanReceiver" android:exported="false" />
+        <receiver android:name="com.ofoqshari.bz.BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
@@ -7,12 +7,12 @@
                 <action android:name="android.intent.action.TIMEZONE_CHANGED" />
             </intent-filter>
         </receiver>
-        <service android:name="ir.azango.app.AzanService" android:exported="false" android:foregroundServiceType="mediaPlayback" />
-        <receiver android:name="ir.azango.app.TimesWidget" android:exported="true"
+        <service android:name="com.ofoqshari.bz.AzanService" android:exported="false" android:foregroundServiceType="mediaPlayback" />
+        <receiver android:name="com.ofoqshari.bz.TimesWidget" android:exported="true"
             android:label="افق شرعی — اذان بعدی">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
-                <action android:name="ir.azango.app.WIDGET_REFRESH" />
+                <action android:name="com.ofoqshari.bz.WIDGET_REFRESH" />
             </intent-filter>
             <meta-data android:name="android.appwidget.provider"
                 android:resource="@xml/times_widget_info" />

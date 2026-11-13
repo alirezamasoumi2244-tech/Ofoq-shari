@@ -1,4 +1,4 @@
-package ir.azango.app
+package com.ofoqshari.bz
 
 import android.Manifest
 import android.app.Activity

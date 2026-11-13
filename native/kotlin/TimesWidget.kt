@@ -1,4 +1,4 @@
-package ir.azango.app
+package com.ofoqshari.bz
 
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
@@ -30,7 +30,7 @@ class TimesWidget : AppWidgetProvider() {
     }
 
     companion object {
-        const val ACTION_REFRESH = "ir.azango.app.WIDGET_REFRESH"
+        const val ACTION_REFRESH = "com.ofoqshari.bz.WIDGET_REFRESH"
 
         fun refreshAll(context: Context) {
             val mgr = AppWidgetManager.getInstance(context)

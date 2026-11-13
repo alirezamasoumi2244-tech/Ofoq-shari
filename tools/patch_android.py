@@ -15,7 +15,8 @@ os.makedirs(pkg_dir, exist_ok=True)
 for f in os.listdir(os.path.join(ROOT, "native/kotlin")):
     if f.endswith(".kt"):
         txt = open(os.path.join(ROOT, "native/kotlin", f), encoding="utf-8").read()
-        txt = txt.replace("package ir.azango.app", "package " + app_id).replace("ir.azango.app.", app_id + ".")
+        for old_pkg in ("ir.azango.app", "com.ofoqshari.bz"):
+            txt = txt.replace("package " + old_pkg, "package " + app_id).replace(old_pkg + ".", app_id + ".")
         open(os.path.join(pkg_dir, f), "w", encoding="utf-8").write(txt)
 # built-in azan audio -> res/raw
 raw_src = os.path.join(ROOT, "native/res/raw")
@@ -44,7 +45,7 @@ mp = os.path.join(A, "app/src/main/AndroidManifest.xml")
 m = open(mp, encoding="utf-8").read()
 if "AzanReceiver" not in m:
     perms = open(os.path.join(ROOT, "native/manifest_permissions.xml"), encoding="utf-8").read()
-    comps = open(os.path.join(ROOT, "native/manifest_components.xml"), encoding="utf-8").read().replace("ir.azango.app.", app_id + ".")
+    comps = open(os.path.join(ROOT, "native/manifest_components.xml"), encoding="utf-8").read().replace("ir.azango.app.", app_id + ".").replace("com.ofoqshari.bz.", app_id + ".")
     m = m.replace("</application>", comps + "    </application>", 1)
     m = m.replace("</manifest>", perms + "</manifest>", 1)
     m = m.replace("<application", '<application android:supportsRtl="true"', 1) if "supportsRtl" not in m else m

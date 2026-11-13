@@ -168,16 +168,10 @@ h2{font-size:.88rem;margin:16px 4px 8px;color:var(--amber);font-weight:700}
 .mode-card small{color:var(--muted);font-size:.76rem;line-height:1.4}
 .mode-card.on{border-color:var(--amber);background:var(--amber-soft)}
 
-.qibla-card{text-align:center;padding:24px 16px}
-.qibla-ring{width:200px;height:200px;margin:8px auto 16px;border-radius:50%;border:3px solid var(--line);background:radial-gradient(circle at center,var(--amber-soft),transparent 65%);position:relative;display:grid;place-items:center;transition:transform .08s linear}
-.qibla-marks{position:absolute;inset:0;pointer-events:none}
-.qibla-marks .qm{position:absolute;font-size:12px;font-weight:700;color:var(--muted)}
-.qibla-marks .n{top:8px;left:50%;transform:translateX(-50%);color:var(--amber)}
-.qibla-marks .e{right:10px;top:50%;transform:translateY(-50%)}
-.qibla-marks .s{bottom:8px;left:50%;transform:translateX(-50%)}
-.qibla-marks .w{left:10px;top:50%;transform:translateY(-50%)}
-.qibla-arrow{width:0;height:0;border-left:14px solid transparent;border-right:14px solid transparent;border-bottom:78px solid var(--amber);transform-origin:50% 85%;position:absolute;top:28px;left:50%;margin-left:-14px;filter:drop-shadow(0 3px 6px rgba(0,0,0,.4));transition:transform .08s linear;z-index:2}
-.qibla-kaaba{position:absolute;bottom:14px;left:50%;transform:translateX(-50%);font-size:11px;color:var(--amber);font-weight:700;background:rgba(0,0,0,.4);padding:2px 10px;border-radius:999px;z-index:1}
+.qibla-card{text-align:center;padding:28px 16px}
+.qibla-stage{width:200px;height:200px;margin:8px auto 16px;position:relative;display:grid;place-items:center}
+.qibla-arrow{width:0;height:0;border-left:22px solid transparent;border-right:22px solid transparent;border-bottom:110px solid var(--amber);transform-origin:50% 90%;filter:drop-shadow(0 6px 14px rgba(0,0,0,.45));transition:transform .1s linear;position:relative}
+.qibla-arrow::after{content:'';position:absolute;left:50%;bottom:-10px;transform:translateX(-50%);width:16px;height:16px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 8px var(--amber-soft)}
 .qibla-deg{font-size:2rem;font-weight:800;color:var(--amber)}
 .q-ok{color:var(--ok)!important;font-weight:600}
 

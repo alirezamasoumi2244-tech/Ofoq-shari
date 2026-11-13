@@ -1,4 +1,4 @@
-package ir.azango.app
+package com.ofoqshari.bz
 
 import android.app.Notification
 import android.app.NotificationManager
@@ -22,8 +22,8 @@ import java.io.File
 /** Foreground service: plays the whole azan file, shows a notification (mute/stop) and opens the azan screen. */
 class AzanService : Service() {
     companion object {
-        const val ACTION_STOP = "ir.azango.app.STOP"
-        const val ACTION_MUTE = "ir.azango.app.MUTE"
+        const val ACTION_STOP = "com.ofoqshari.bz.STOP"
+        const val ACTION_MUTE = "com.ofoqshari.bz.MUTE"
         const val NOTIF_ID = 1
         // Read by AzanPlugin.state() so the web UI knows when to show the azan screen.
         @Volatile var playing = false

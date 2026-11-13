@@ -362,14 +362,12 @@
       qiblaSmooth = (qiblaSmooth + diff * 0.25 + 360) % 360;
       qiblaHeading = qiblaSmooth;
       const arrow = document.getElementById('qArrow');
-      const ring = document.getElementById('qRing');
       const status = document.getElementById('qStatus');
       const liveDeg = document.getElementById('qLive');
       if (!arrow) return;
-      // Arrow points to Qibla relative to phone: rotate so Qibla is "up" when phone faces it
+      // فلش همیشه به سمت قبله قفل شده؛ وقتی بالا باشد رو به قبله‌اید
       const rot = (qiblaBearing - qiblaHeading + 360) % 360;
       arrow.style.transform = 'rotate(' + rot + 'deg)';
-      if (ring) ring.style.transform = 'rotate(' + (-qiblaHeading) + 'deg)'; // north marker stays with world
       if (liveDeg) liveDeg.textContent = fa(Math.round(rot)) + '°';
       if (status) {
         const aligned = Math.min(Math.abs(rot), 360 - Math.abs(rot)) < 8;
@@ -405,16 +403,12 @@
     const degFa = fa(Math.round(deg));
     app.innerHTML = header('قبله‌نما', 'settings') +
       '<section class="card qibla-card">' +
-      '<div class="qibla-ring" id="qRing"><div class="qibla-marks" aria-hidden="true">' +
-      '<span class="qm n">ش</span><span class="qm e">ق</span><span class="qm s">ج</span><span class="qm w">غ</span></div>' +
-      '<div class="qibla-arrow" id="qArrow"></div>' +
-      '<div class="qibla-kaaba">کعبه</div></div>' +
+      '<div class="qibla-stage"><div class="qibla-arrow" id="qArrow"></div></div>' +
       '<div class="qibla-deg" id="qLive">' + degFa + '°</div>' +
-      '<p class="hint" id="qStatus">در حال اتصال به قطب‌نما… گوشی را صاف نگه دارید</p></section>' +
-      '<p class="hint" id="qLevel">تراز افقی…</p>' +
-      '<p class="hint">زاویه قبله از شمال: <b>' + degFa + '°</b> · موقعیت: <b>' + esc(p.name) + '</b></p>' +
-      '<p class="hint">فلش سبز همیشه به سمت قبله می‌چرخد. وقتی فلش دقیقاً بالا باشد، رو به قبله ایستاده‌اید. از تداخل فلز و آهنربا دوری کنید.</p>';
-    // start after DOM paint
+      '<p class="hint" id="qStatus">در حال اتصال به قطب‌نما… گوشی را صاف نگه دارید</p>' +
+      '<p class="hint" id="qLevel">تراز افقی…</p></section>' +
+      '<p class="hint">فقط یک فلش که همیشه به سمت قبله قفل شده است. وقتی فلش دقیقاً بالا باشد، رو به قبله ایستاده‌اید.</p>' +
+      '<p class="hint">زاویه از شمال: <b>' + degFa + '°</b> · <b>' + esc(p.name) + '</b></p>';
     setTimeout(() => startQiblaCompass(deg), 50);
   }
   function renderDisplay() {
@@ -570,10 +564,82 @@
   }
   function renderConvert() {
     app.innerHTML = header('تبدیل تاریخ', 'tools') +
-      '<section class="form"><label>تاریخ میلادی (نمونه: ۲۰۲۶-۱۱-۱۳)<input id="cvIn" dir="ltr" placeholder="YYYY-MM-DD"></label>' +
-      '<button class="btn" id="cvGo">تبدیل</button><div id="cvOut" class="card" style="margin-top:12px;min-height:80px"></div></section>' +
-      '<p class="hint">تاریخ امروز دستگاه هم به‌صورت زنده در صفحه اصلی با سه تقویم نمایش داده می‌شود.</p>';
+      '<p class="hint">نوع تقویم ورودی را انتخاب کنید، تاریخ را وارد کنید و به همهٔ تقویم‌ها تبدیل می‌شود.</p>' +
+      '<section class="form">' +
+        '<label>تقویم ورودی<select id="cvType">' +
+          '<option value="greg">میلادی</option>' +
+          '<option value="shamsi">شمسی (هجری شمسی)</option>' +
+          '<option value="qamari">قمری (هجری قمری)</option>' +
+        '</select></label>' +
+        '<label id="cvLabel">تاریخ (YYYY-MM-DD یا YYYY/MM/DD)<input id="cvIn" dir="ltr" placeholder="2026-11-13" inputmode="numeric"></label>' +
+        '<button class="btn wide" id="cvGo">تبدیل به همه</button>' +
+        '<button class="btn alt wide" id="cvToday" type="button">امروز را تبدیل کن</button>' +
+        '<div id="cvOut" class="card" style="margin-top:12px;min-height:100px"></div>' +
+      '</section>' +
+      '<p class="hint">مثال شمسی: ۱۴۰۴/۰۸/۲۲ · قمری: ۱۴۴۷/۰۵/۲۲ · میلادی: 2026-11-13</p>';
   }
+  function _cvDigits(s) {
+    return String(s || '').trim().replace(/[۰-۹]/g, d => '۰۱۲۳۴۵۶۷۸۹'.indexOf(d));
+  }
+  function _cvParse(raw) {
+    const s = _cvDigits(raw);
+    const m = s.match(/^(\d{3,4})[\/\-\.](\d{1,2})[\/\-\.](\d{1,2})$/);
+    if (!m) return null;
+    return { y: +m[1], mo: +m[2], d: +m[3] };
+  }
+  function _cvFindGregorian(cal, y, mo, d) {
+    let guess;
+    if (cal === 'persian') guess = Date.UTC(y + 621, Math.max(0, mo - 1), d, 12);
+    else if (cal === 'islamic-civil') guess = Date.UTC(Math.floor(y * 0.97 + 622), Math.max(0, mo - 1), d, 12);
+    else return new Date(Date.UTC(y, mo - 1, d, 12));
+    const tryRange = (from, to) => {
+      for (let delta = from; delta <= to; delta++) {
+        const dt = new Date(guess + delta * 86400000);
+        const parts = new Intl.DateTimeFormat('en-US-u-ca-' + cal, { timeZone: 'UTC', year: 'numeric', month: 'numeric', day: 'numeric' }).formatToParts(dt);
+        const get = ty => +(parts.find(x => x.type === ty) || {}).value;
+        if (get('year') === y && get('month') === mo && get('day') === d) return dt;
+      }
+      return null;
+    };
+    return tryRange(-60, 60) || tryRange(-450, 450);
+  }
+  function _cvFormatAll(dt) {
+    if (!dt || isNaN(dt.getTime())) return null;
+    const fmt = (loc, o) => new Intl.DateTimeFormat(loc, Object.assign({ timeZone: 'UTC' }, o)).format(dt);
+    return {
+      shamsi: fmt('fa-IR-u-ca-persian', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
+      qamari: fmt('fa-IR-u-ca-islamic-civil', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
+      greg: fmt('fa-IR', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
+      gregEn: fmt('en-GB', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }),
+      iso: fmt('en-CA', { year: 'numeric', month: '2-digit', day: '2-digit' })
+    };
+  }
+  function runConvert() {
+    const type = (document.getElementById('cvType') || {}).value || 'greg';
+    const parts = _cvParse((document.getElementById('cvIn') || {}).value);
+    const out = document.getElementById('cvOut');
+    if (!out) return;
+    if (!parts) {
+      out.innerHTML = '<p class="hint">تاریخ معتبر وارد کنید. جداکننده می‌تواند - یا / باشد.</p>';
+      return;
+    }
+    let dt = null;
+    if (type === 'greg') dt = new Date(Date.UTC(parts.y, parts.mo - 1, parts.d, 12));
+    else if (type === 'shamsi') dt = _cvFindGregorian('persian', parts.y, parts.mo, parts.d);
+    else dt = _cvFindGregorian('islamic-civil', parts.y, parts.mo, parts.d);
+    const all = _cvFormatAll(dt);
+    if (!all) {
+      out.innerHTML = '<p class="hint">تبدیل ممکن نشد. سال و ماه و روز را بررسی کنید.</p>';
+      return;
+    }
+    out.innerHTML =
+      '<div style="margin:6px 0"><b>شمسی:</b> ' + esc(all.shamsi) + '</div>' +
+      '<div style="margin:6px 0"><b>قمری:</b> ' + esc(all.qamari) + '</div>' +
+      '<div style="margin:6px 0"><b>میلادی:</b> ' + esc(all.greg) + '</div>' +
+      '<div style="margin:6px 0"><b>میلادی (لاتین):</b> <span dir="ltr">' + esc(all.gregEn) + '</span></div>' +
+      '<div style="margin:6px 0"><b>ISO:</b> <span dir="ltr">' + esc(all.iso) + '</span></div>';
+  }
+
   function renderWeek() {
     const p = place();
     let html = header('اوقات هفته', 'tools') + '<section class="list">';
@@ -852,16 +918,15 @@ function renderFaq() {
       S.qada[k] = Math.max(0, (S.qada[k] || 0) + Number(dd));
       save(false); renderQada();
     }
-    if (el.id === 'cvGo') {
-      const raw = (document.getElementById('cvIn').value || '').trim();
-      const out = document.getElementById('cvOut');
-      const m = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-      if (!m) { out.textContent = 'فرمت را مثل 2026-11-13 وارد کنید.'; return; }
-      const d = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3]));
-      const shamsi = new Intl.DateTimeFormat('fa-IR-u-ca-persian', { timeZone: 'UTC', weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }).format(d);
-      const qamari = new Intl.DateTimeFormat('fa-IR-u-ca-islamic-civil', { timeZone: 'UTC', day: 'numeric', month: 'long', year: 'numeric' }).format(d);
-      const greg = new Intl.DateTimeFormat('en-GB', { timeZone: 'UTC', day: 'numeric', month: 'long', year: 'numeric' }).format(d);
-      out.innerHTML = '<div><b>شمسی:</b> ' + esc(shamsi) + '</div><div><b>قمری:</b> ' + esc(qamari) + '</div><div><b>میلادی:</b> ' + esc(greg) + '</div>';
+    if (el.id === 'cvGo') { runConvert(); }
+    if (el.id === 'cvToday') {
+      const d = new Date();
+      const iso = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+      const sel = document.getElementById('cvType');
+      if (sel) sel.value = 'greg';
+      const inp = document.getElementById('cvIn');
+      if (inp) inp.value = iso;
+      runConvert();
     }
     if (el.id === 'shareTimes') {
       const p = place(), tms = timesFor(dayStart(p, 0), p);
@@ -877,6 +942,13 @@ function renderFaq() {
     if (e.target.id === 'vol') { S.volume = e.target.value / 100; document.getElementById('volV').textContent = fa(e.target.value) + '٪'; }
   });
   document.addEventListener('change', e => {
+    if (e.target.id === 'cvType') {
+      const inp = document.getElementById('cvIn');
+      if (!inp) return;
+      if (e.target.value === 'greg') inp.placeholder = '2026-11-13';
+      else if (e.target.value === 'shamsi') inp.placeholder = '1404/08/22';
+      else inp.placeholder = '1447/05/22';
+    }
     if (e.target.id === 'vol') save();
     if (e.target.id === 'pre') { S.pre = parseInt(e.target.value, 10); save(); }
     if (e.target.id === 'hj') { S.hijriOffset = parseInt(e.target.value, 10); save(false); }
