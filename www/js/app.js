@@ -8,7 +8,7 @@
     pin: '<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>',
     home: '<path d="M3.5 11 12 4l8.5 7"/><path d="M6 10v9.5h12V10"/><path d="M10 19.5v-5h4v5"/>',
     clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
-    gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8"/>',
+    gear: '<path d="M10 2.8h4l.6 2.1a7.5 7.5 0 0 1 1.7 1l2-.8 2 3.5-1.5 1.5a7.5 7.5 0 0 1 0 2l1.5 1.5-2 3.5-2-.8a7.5 7.5 0 0 1-1.7 1l-.6 2.1h-4l-.6-2.1a7.5 7.5 0 0 1-1.7-1l-2 .8-2-3.5 1.5-1.5a7.5 7.5 0 0 1 0-2L3.7 8.6l2-3.5 2 .8a7.5 7.5 0 0 1 1.7-1z"/><circle cx="12" cy="11.1" r="2.7"/>',
     bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>',
     mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/>',
     sound: '<path d="M4 9.5h3.5L12 5.5v13L7.5 14.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
@@ -50,6 +50,7 @@
     uiMode: 'normal', // normal | elder
     highContrast: false,
     theme: 'green',          // green | blue | sand
+    themeMode: 'system',     // system | dark | light
     qada: { fajr: 0, dhuhr: 0, asr: 0, maghrib: 0, isha: 0, fast: 0 },
     dhikrCount: 0, dhikrTarget: 33, dhikrName: 'سبحان الله',
     notes: {},               // 'YYYY-M-D' -> text
@@ -66,7 +67,7 @@
     showProgress: true,      // prayer progress bar
     preciseCd: true          // countdown with seconds emphasis
   };
-  const APP_VERSION = '1.8.0';
+  const APP_VERSION = '1.8.2';
   const METHOD_LABELS = {
     tehran: 'مؤسسه ژئوفیزیک تهران',
     mwl: 'لیگ جهانی مسلمانان',
@@ -92,6 +93,7 @@
       if (!m.method || !METHOD_LABELS[m.method]) m.method = 'tehran';
       if (![0.9, 1, 1.15, 1.3].includes(m.fontScale)) m.fontScale = 1;
       if (m.uiMode !== 'elder') m.uiMode = 'normal';
+      if (!['system', 'light', 'dark'].includes(m.themeMode)) m.themeMode = 'system';
       return m;
     } catch (e) { return JSON.parse(JSON.stringify(DEF)); }
   }
@@ -101,6 +103,31 @@
   function place() {
     if (S.custom) return S.custom;
     return CITIES.find(c => c.id === S.cityId) || CITIES[0];
+  }
+  function nearestCity(lat, lng) {
+    let best = CITIES[0], bestD = 1e18;
+    for (const c of CITIES) {
+      const dlat = (c.lat - lat) * Math.PI / 180, dlng = (c.lng - lng) * Math.PI / 180;
+      const a = Math.sin(dlat / 2) ** 2 + Math.cos(c.lat * Math.PI / 180) * Math.cos(lat * Math.PI / 180) * Math.sin(dlng / 2) ** 2;
+      const d = 2 * 6371 * Math.asin(Math.sqrt(a));
+      if (d < bestD) { bestD = d; best = c; }
+    }
+    return { city: best, km: Math.round(bestD * 10) / 10 };
+  }
+  function applyGpsPosition(lat, lng, msgEl) {
+    const { city, km } = nearestCity(lat, lng);
+    S.custom = null;
+    S.cityId = city.id;
+    save();
+    if (msgEl) msgEl.textContent = 'شهر تشخیص‌داده‌شده: ' + city.name + ' (حدود ' + fa(km) + ' کیلومتر)';
+    const sel = document.querySelector('.setup-sel');
+    if (sel) sel.innerHTML = 'شهر فعلی: <b>' + esc(city.name) + '</b>';
+    document.querySelectorAll('#cList .city').forEach(b => {
+      const on = b.dataset.city === city.id;
+      b.classList.toggle('sel', on);
+      const em = b.querySelector('em');
+      if (em) em.innerHTML = on ? ic('check') : '';
+    });
   }
   const cityNow = tz => new Date(Date.now() + tz * 3600000); // read with getUTC*
   function timesFor(dayMs, p) {
@@ -114,9 +141,14 @@
     document.body.classList.toggle('elder', elder);
     document.body.classList.toggle('hc', !!S.highContrast || elder);
     document.body.dataset.theme = S.theme || 'green';
-    document.body.classList.toggle('amoled', !!S.amoled);
+    const systemDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const effectiveMode = S.themeMode === 'system' ? (systemDark ? 'dark' : 'light') : (S.themeMode || 'system');
+    document.body.dataset.mode = effectiveMode;
+    document.body.classList.toggle('amoled', !!S.amoled && effectiveMode === 'dark');
     // elder has its own scale in CSS; normal uses fontScale
     document.documentElement.style.setProperty('--fs', elder ? 1 : (S.fontScale || 1));
+    const meta = document.querySelector('meta[name="theme-color"]');
+    if (meta) meta.content = effectiveMode === 'light' ? '#f4f0e8' : '#140f0a';
   }
   const dayStart = (p, offset) => { const c = cityNow(p.tz); return Date.UTC(c.getUTCFullYear(), c.getUTCMonth(), c.getUTCDate()) + (offset || 0) * 86400000; };
 
@@ -420,15 +452,27 @@
   }
   function renderAbout() {
     app.innerHTML = header('درباره برنامه', 'settings') +
-      '<section class="card"><h3>افق شرعی</h3><p><b>نسخه ' + fa(APP_VERSION) + '</b> · آخرین به‌روزرسانی: آبان ۱۴۰۵ — اوقات شرعی، اذان و قبله‌نما برای کاربران فارسی‌زبان، با رابط بزرگ و ساده.</p>' +
-      '<p>روش پیش‌فرض: مؤسسه ژئوفیزیک دانشگاه تهران. می‌توانید روش محاسبه را در تنظیمات تغییر دهید.</p>' +
-      '<p class="hint">اوقات را با تقویم رسمی شهر خود مقایسه کنید؛ اختلاف چند دقیقه‌ای ممکن است. از «اصلاح دقیقه» در تنظیمات اذان استفاده کنید.</p>' +
+      '<section class="card"><h3>افق شرعی</h3>' +
+      '<p><b>نسخه ' + fa(APP_VERSION) + '</b> · آخرین به‌روزرسانی: آبان ۱۴۰۵</p>' +
+      '<p>افق شرعی یک برنامه کاملاً فارسی و راست‌چین برای نمایش اوقات شرعی، پخش اذان، قبله‌نما و ابزارهای عبادی است. رابط کاربری بزرگ، ساده و مناسب سالمندان طراحی شده تا همه بتوانند به راحتی از آن استفاده کنند.</p>' +
+      '<p>روش پیش‌فرض محاسبه اوقات، <b>مؤسسه ژئوفیزیک دانشگاه تهران</b> است که برای شهرهای ایران دقیق‌ترین نتیجه را می‌دهد. در تنظیمات می‌توانید روش‌های دیگر (MWL، ISNA، مصر، کراچی، ام‌القرى، جعفری و …) را انتخاب کنید.</p>' +
+      '<p class="hint">اوقات محاسبه‌شده را حتماً با تقویم رسمی یا اعلام محلی شهر خود مقایسه کنید. اختلاف ۱ تا ۳ دقیقه‌ای به‌خاطر ارتفاع، افق و روش محاسبه کاملاً طبیعی است. از بخش «اصلاح دقیقه» در تنظیمات اذان می‌توانید هر وقت را جداگانه جلو یا عقب ببرید.</p>' +
+      '<p>قابلیت‌های اصلی برنامه:</p>' +
+      '<ul class="hint" style="padding-right:18px;margin:8px 0">' +
+      '<li>اوقات شرعی روزانه + امساک و نیمه‌شب شرعی</li>' +
+      '<li>پخش اذان با امکان انتخاب مؤذن و فایل صوتی دلخواه</li>' +
+      '<li>قبله‌نمای زنده با حسگر جهت‌یابی</li>' +
+      '<li>تقویم هم‌زمان شمسی، قمری و میلادی همراه مناسبت‌ها</li>' +
+      '<li>ذکرشمار، رکعت‌شمار، ثبت نماز و روزه قضا</li>' +
+      '<li>اذکار صبح و شام، دعاهای کوتاه و اسماء الحسنی</li>' +
+      '<li>ویجت صفحه اصلی، پشتیبان‌گیری و حالت رمضان</li>' +
+      '</ul>' +
+      '<p class="hint">برنامه کاملاً آفلاین کار می‌کند و هیچ داده‌ای به سرور ارسال نمی‌شود. همه تنظیمات و اطلاعات فقط روی گوشی شما ذخیره می‌گردند.</p>' +
       '<div class="form"><label>اصلاح تاریخ قمری<select id="hj">' + [-2, -1, 0, 1, 2].map(v => '<option value="' + v + '"' + (S.hijriOffset === v ? ' selected' : '') + '>' + (v > 0 ? '+' : '') + fa(v) + ' روز</option>').join('') + '</select></label></div></section>' +
-      '<li>روش‌های محاسبه مختلف (تهران، MWL، ISNA و …)</li><li>قبله‌نما</li><li>موقعیت‌یابی GPS</li><li>اندازه فونت و کنتراست بالا</li><li>پشتیبان‌گیری تنظیمات</li><li>صفحه حریم خصوصی</li></ul></section>' +
       '<section class="card"><h3>ما را دنبال کنید</h3>' +
       '<p class="hint" style="margin:0 0 10px">با دنبال کردن صفحهٔ ما در گیت‌هاب، از نسخه‌های جدید زودتر باخبر می‌شوید و با ستاره‌دادن به پروژه، به بهتر شدن افق شرعی کمک می‌کنید.</p>' +
       '<button class="btn wide" id="ghOpen" type="button">⭐ دنبال کردن در گیت‌هاب</button></section>' +
-      '<p class="hint" style="text-align:center;margin-top:12px">تمام داده‌ها فقط روی دستگاه شما ذخیره می‌شوند.</p>';
+      '<p class="hint" style="text-align:center;margin-top:12px">تمام داده‌ها فقط روی دستگاه شما ذخیره می‌شوند. · ساخته‌شده با عشق برای کاربران فارسی‌زبان</p>';
   }
   function renderMethod() {
     app.innerHTML = header('روش محاسبه اوقات', 'settings') +
@@ -565,7 +609,11 @@
       '<section class="form"><label>اندازه نوشته (حالت عادی)<select id="fontScale">' +
       scales.map(([v, n]) => '<option value="' + v + '"' + (S.fontScale === v ? ' selected' : '') + '>' + n + '</option>').join('') +
       '</select></label></section>') +
-      '<h2>ظاهر</h2><section class="menu">' +
+      '<h2>حالت روشن / تاریک</h2><section class="menu">' +
+      [['system','مطابق تم دستگاه'],['dark','تاریک'],['light','روشن']].map(([id,n]) =>
+        '<button class="mi' + ((S.themeMode || 'system') === id ? ' sel' : '') + '" data-thememode="' + id + '"><span><b>تم ' + n + '</b></span><em>' + ((S.themeMode || 'system') === id ? ic('check') : '') + '</em></button>').join('') +
+      '</section>' +
+      '<h2>رنگ تاکید</h2><section class="menu">' +
       [['green','سبز'],['blue','آبی'],['sand','خاکی']].map(([id,n]) =>
         '<button class="mi' + (S.theme === id ? ' sel' : '') + '" data-theme="' + id + '"><span><b>تم ' + n + '</b></span><em>' + (S.theme === id ? ic('check') : '') + '</em></button>').join('') +
       '</section>' +
@@ -610,10 +658,12 @@
       ).join('') + '</div>' +
       '<p class="hint setup-sel">شهر فعلی: <b>' + esc(selected.name) + '</b></p></section>' +
       '<section class="card setup-card"><h3>' + ic('bell') + ' دسترسی‌ها</h3>' +
-      '<p class="hint">برای پخش اذان و نمایش اعلان، اجازه اعلان‌ها لازم است. در گوشی‌های سامسونگ، شیائومی و هواوی بعداً «شروع خودکار» و «بدون محدودیت باتری» را هم فعال کنید.</p>' +
+      '<p class="hint">برای پخش اذان و نمایش اعلان، اجازه اعلان‌ها لازم است. دسترسی موقعیت برای تشخیص خودکار شهر استفاده می‌شود و فقط روی دستگاه می‌ماند.</p>' +
       '<button class="btn" id="nAsk">' + ic('bell') + ' اجازه نمایش اعلان</button>' +
       '<button class="btn alt" id="nBat">خارج کردن از محدودیت باتری</button>' +
-      '<div id="st" class="hint">وضعیت دسترسی بعد از درخواست نمایش داده می‌شود.</div></section>' +
+      '<button class="btn alt" id="setupGps">' + ic('pin') + ' تشخیص شهر با GPS</button>' +
+      '<div id="st" class="hint">وضعیت دسترسی بعد از درخواست نمایش داده می‌شود.</div>' +
+      '<div id="gpsMsg" class="hint"></div></section>' +
       '<button class="btn wide setup-finish" id="setupDone">شروع استفاده از افق شرعی</button>' +
       '<p class="hint" style="text-align:center;margin-top:8px">پیش‌فرض: اذان صبح، ظهر و مغرب روشن · یادآوری قبل از اذان خاموش</p>';
     // به‌روزرسانی وضعیت دسترسی اگر روی گوشی باشیم
@@ -807,11 +857,30 @@
       '<p class="hint">اختلاف چند دقیقه‌ای بین روش‌ها طبیعی است. روش تهران معمولاً برای ایران مناسب‌تر است.</p>';
   }
 function renderFaq() {
-    app.innerHTML = header('راهنما', 'tools') +
-      '<section class="card"><h3>اذان پخش نمی‌شود؟</h3><p class="hint">۱) اعلان‌ها را مجاز کنید ۲) محدودیت باتری را بردارید ۳) در شیائومی/سامسونگ «شروع خودکار» را روشن کنید ۴) از Force Stop استفاده نکنید.</p></section>' +
-      '<section class="card"><h3>اوقات چند دقیقه فرق دارد؟</h3><p class="hint">روش محاسبه را در تنظیمات عوض کنید یا از «اصلاح دقیقه» برای هر وقت استفاده کنید. ارتفاع محل و جدول‌های رسمی گاهی ۱–۳ دقیقه اختلاف دارند.</p></section>' +
-      '<section class="card"><h3>قبله دقیق نیست؟</h3><p class="hint">گوشی را به شکل عدد ۸ حرکت دهید تا قطب‌نما کالیبره شود. از فلز و آهنربا دور باشید. GPS موقعیت را دقیق‌تر می‌کند.</p></section>' +
-      '<section class="card"><h3>حریم خصوصی</h3><p class="hint">همه داده‌ها فقط روی گوشی شماست؛ هیچ سروری در کار نیست.</p></section>';
+    const faqs = [
+      ['اذان پخش نمی‌شود؟', '۱) اعلان‌ها را در تنظیمات گوشی مجاز کنید. ۲) محدودیت باتری را برای افق شرعی بردارید. ۳) در شیائومی، هواوی و سامسونگ گزینه «شروع خودکار» یا Auto-start را روشن کنید. ۴) برنامه را Force Stop نکنید. ۵) صدای گوشی را چک کنید و حالت بی‌صدا را خاموش کنید.'],
+      ['اوقات شرعی چند دقیقه با تقویم رسمی فرق دارد؟', 'روش محاسبه را در تنظیمات عوض کنید (پیش‌فرض: مؤسسه ژئوفیزیک تهران). از «اصلاح دقیقه» برای هر وقت استفاده کنید. ارتفاع محل، افق و جداول رسمی گاهی ۱ تا ۳ دقیقه اختلاف طبیعی دارند.'],
+      ['قبله‌نما دقیق نیست یا می‌لرزد؟', 'گوشی را به شکل عدد ۸ در هوا بچرخانید تا قطب‌نما کالیبره شود. از اجسام فلزی، آهنربا و بلندگو دور شوید. موقعیت دقیق‌تر با GPS به‌دست می‌آید. در تنظیمات می‌توانید آفست دستی وارد کنید.'],
+      ['حریم خصوصی چگونه است؟', 'تمام داده‌ها (شهر، تنظیمات، قضاها، ذکرها) فقط روی گوشی شما ذخیره می‌شوند. هیچ سروری، حساب کاربری یا ارسال داده به اینترنت وجود ندارد.'],
+      ['چطور شهر را عوض کنم؟', 'از صفحه اصلی روی نام شهر بزنید یا از تنظیمات > شهر و موقعیت. می‌توانید استان را فیلتر کنید، به علاقه‌مندی‌ها اضافه کنید یا با GPS شهر نزدیک را پیدا کنید.'],
+      ['روش محاسبه چیست و کدام را انتخاب کنم؟', 'پیش‌فرض برای ایران «مؤسسه ژئوفیزیک دانشگاه تهران» است. روش‌های دیگر مثل MWL، ISNA، مصر، کراچی، ام‌القرى و جعفری هم موجودند. برای ایران معمولاً همان تهران بهترین است.'],
+      ['چطور اذان را زودتر یا دیرتر پخش کنم؟', 'در تنظیمات اذان برای هر وقت «اصلاح دقیقه» را تنظیم کنید (مثبت یا منفی). یادآوری قبل از اذان هم جداگانه قابل تنظیم است.'],
+      ['مؤذن یا فایل صوتی را چطور عوض کنم؟', 'از تنظیمات > مؤذن و فایل صوتی می‌توانید مؤذن پیش‌فرض را انتخاب کنید یا فایل صوتی دلخواه خود را اضافه کنید.'],
+      ['اعلان‌ها کار نمی‌کنند؟', 'مجوز اعلان را بدهید. در اندروید‌های جدید، «اعلان‌های حساس» یا Scheduled notifications را بررسی کنید. محدودیت باتری و بهینه‌سازی را برای برنامه خاموش کنید.'],
+      ['بعد از ری‌استارت گوشی اذان قطع می‌شود؟', 'برنامه باید اجازه شروع خودکار داشته باشد. BootReceiver برای زمان‌بندی مجدد بعد از روشن شدن گوشی طراحی شده است. شروع خودکار را در تنظیمات گوشی فعال کنید.'],
+      ['چطور پشتیبان بگیرم؟', 'از تنظیمات > پشتیبان‌گیری می‌توانید تنظیمات را به صورت فایل JSON خروجی بگیرید و بعداً بازیابی کنید.'],
+      ['ویجت اوقات شرعی کجاست؟', 'روی صفحه اصلی گوشی لمس طولانی کنید، ویجت‌ها را باز کنید و «افق شرعی» را اضافه کنید. چند اندازه (فشرده و کامل) موجود است.'],
+      ['ذکرشمار و رکعت‌شمار چطور کار می‌کنند؟', 'از ابزارها > ذکرشمار یا رکعت‌شمار. با هر ضربه شمارش افزایش می‌یابد. می‌توانید هدف تعیین کنید و ویبره را روشن/خاموش کنید.'],
+      ['قضاهای نماز و روزه را چطور ثبت کنم؟', 'از ابزارها > نماز و روزه قضا تعداد باقی‌مانده هر نماز و روزه را وارد کنید و با دکمه‌ها کم و زیاد کنید.'],
+      ['تقویم و مناسبت‌ها از کجا می‌آیند؟', 'تقویم شمسی، قمری و میلادی هم‌زمان نمایش داده می‌شود. مناسبت‌های مذهبی و ملی به صورت آفلاین در برنامه ذخیره شده‌اند.'],
+      ['حالت رمضان چیست؟', 'در نمایش و حالت می‌توانید حالت رمضان را فعال کنید تا شمارش معکوس تا امساک و افطار روی صفحه اصلی دیده شود.'],
+      ['چطور تم و اندازه فونت را عوض کنم؟', 'از تنظیمات > نمایش و حالت: اندازه فونت، کنتراست بالا، تم‌های رنگی و حالت سالمندپسند در دسترس است.'],
+      ['GPS کار نمی‌کند یا شهر اشتباه پیدا می‌کند؟', 'مجوز موقعیت را بدهید. در فضای باز امتحان کنید. اگر GPS دقیق نبود، شهر را دستی از لیست انتخاب کنید.'],
+      ['صدا در حالت بی‌صدا یا Do Not Disturb پخش می‌شود؟', 'بسته به تنظیمات اندروید، اعلان‌های اولویت‌دار ممکن است در DND پخش شوند. حجم اذان را در تنظیمات برنامه و گوشی بررسی کنید.'],
+      ['برنامه اینترنت لازم دارد؟', 'خیر. محاسبه اوقات، اذان، قبله، تقویم، اذکار و همه قابلیت‌های اصلی کاملاً آفلاین هستند. اینترنت فقط برای باز کردن لینک گیت‌هاب در صفحه درباره لازم است.']
+    ];
+    app.innerHTML = header('راهنما و سوالات پرتکرار', 'tools') +
+      faqs.map(([q, a]) => '<section class="card"><h3>' + q + '</h3><p class="hint">' + a + '</p></section>').join('');
   }
 
 
@@ -1005,6 +1074,19 @@ function renderFaq() {
       Native.batterySettings();
       setTimeout(() => { if (page === 'setup') renderSetup(); else if (page === 'notif') renderNotif(); }, 1200);
     }
+    if (el.id === 'setupGps') {
+      const msg = document.getElementById('gpsMsg');
+      if (!navigator.geolocation) {
+        if (msg) msg.textContent = 'GPS در این دستگاه پشتیبانی نمی‌شود.';
+        return;
+      }
+      if (msg) msg.textContent = 'در حال دریافت موقعیت…';
+      navigator.geolocation.getCurrentPosition(pos => {
+        applyGpsPosition(pos.coords.latitude, pos.coords.longitude, msg);
+      }, err => {
+        if (msg) msg.textContent = 'موقعیت گرفته نشد. اجازه مکان را فعال کنید. (' + (err.message || err.code) + ')';
+      }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
+    }
     if (el.id === 'nApp') Native.appSettings();
     if (el.id === 'ghOpen') {
       const url = 'https://github.com/alirezamasoumi2244-tech/Ofoq-shari';
@@ -1037,6 +1119,7 @@ function renderFaq() {
       S.highContrast = !S.highContrast; applyUiPrefs(); save(false); renderDisplay();
     }
     if (el.dataset.theme) { S.theme = el.dataset.theme; applyUiPrefs(); save(false); renderDisplay(); }
+    if (el.dataset.thememode) { S.themeMode = el.dataset.thememode; applyUiPrefs(); save(false); renderDisplay(); }
     if (el.dataset.imsak) { S.showImsak = !S.showImsak; save(false); renderDisplay(); }
     if (el.dataset.midn) { S.showMidnight = !S.showMidnight; save(false); renderDisplay(); }
     if (el.dataset.amoled) { S.amoled = !S.amoled; applyUiPrefs(); save(false); renderDisplay(); }
@@ -1200,6 +1283,12 @@ function renderFaq() {
 
   // اولین ورود: راه‌اندازی شهر و دسترسی‌ها
   applyUiPrefs();
+  if (window.matchMedia) {
+    const systemThemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const onSystemThemeChange = () => { if (S.themeMode === 'system') applyUiPrefs(); };
+    if (systemThemeQuery.addEventListener) systemThemeQuery.addEventListener('change', onSystemThemeChange);
+    else if (systemThemeQuery.addListener) systemThemeQuery.addListener(onSystemThemeChange);
+  }
   if (!S.setupDone) page = 'setup';
   stack = [page]; try { history.replaceState({ i: 0 }, ''); } catch (e) {}
   render();
