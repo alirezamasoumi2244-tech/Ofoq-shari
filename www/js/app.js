@@ -32,7 +32,9 @@
     text: '<path d="M4 6h16M4 12h10M4 18h14"/>',
     shield: '<path d="M12 3l8 3.5v5.5c0 5-3.5 8.5-8 9.5-4.5-1-8-4.5-8-9.5V6.5z"/>',
     save: '<path d="M5 4h11l3 3v13H5z"/><path d="M8 4v5h8V4M8 15h8"/>',
-    gps: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><path d="M5.6 5.6l2 2M16.4 16.4l2 2M16.4 5.6l-2 2M5.6 16.4l2-2"/>'
+    gps: '<circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><path d="M5.6 5.6l2 2M16.4 16.4l2 2M16.4 5.6l-2 2M5.6 16.4l2-2"/>',
+    cal: '<rect x="4" y="5.5" width="16" height="14.5" rx="2.5"/><path d="M4 10h16M8.5 3.5v4M15.5 3.5v4"/>',
+    grid: '<rect x="4" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5"/><rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5"/><rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5"/>'
   };
   const ic = n => '<svg class="ic" viewBox="0 0 24 24" aria-hidden="true">' + PATHS[n] + '</svg>';
   const ICON = { fajr: ic('fajr'), sunrise: ic('sunrise'), dhuhr: ic('sun'), asr: ic('asr'), maghrib: ic('sunset'), isha: ic('moon') };
@@ -187,75 +189,133 @@
   const app = document.getElementById('app');
   const nav = document.getElementById('nav');
   let page = 'home', lastDay = '';
-  const NAV = [['home', ic('home'), 'خانه'], ['times', ic('clock'), 'اوقات'], ['tools', ic('moon'), 'ابزار'], ['settings', ic('gear'), 'تنظیمات']];
-  const SUB = { city: 'انتخاب شهر', azan: 'تنظیمات اذان', muezzin: 'مؤذن و فایل صوتی', notif: 'اعلان‌ها', about: 'درباره برنامه', method: 'روش محاسبه', qibla: 'قبله‌نما', display: 'نمایش و حالت', backup: 'پشتیبان‌گیری', privacy: 'حریم خصوصی', tools: 'ابزارها', dhikr: 'ذکرشمار', rakat: 'رکعت‌شمار', qada: 'نماز و روزه قضا', convert: 'تبدیل تاریخ', duas: 'ادعیه و اذکار', names: 'اسماء الحسنی', wudu: 'وضو و نماز', week: 'اوقات هفته', faq: 'راهنما', compare: 'مقایسه روش‌ها' };
+  const NAV = [['home', ic('home'), 'خانه'], ['times', ic('clock'), 'اوقات'], ['qibla', ic('compass'), 'قبله'], ['calendar', ic('cal'), 'تقویم'], ['tools', ic('grid'), 'ابزارها']];
+  const SUB = { city: 'انتخاب شهر', azan: 'تنظیمات اذان', muezzin: 'مؤذن و فایل صوتی', notif: 'اعلان‌ها', about: 'درباره برنامه', method: 'روش محاسبه', qibla: 'قبله‌نما', display: 'نمایش و حالت', backup: 'پشتیبان‌گیری', privacy: 'حریم خصوصی', tools: 'ابزارها', dhikr: 'ذکرشمار', rakat: 'رکعت‌شمار', qada: 'نماز و روزه قضا', convert: 'تبدیل تاریخ', duas: 'ادعیه و اذکار', names: 'اسماء الحسنی', wudu: 'وضو و نماز', week: 'اوقات هفته', faq: 'راهنما', compare: 'مقایسه روش‌ها', calendar: 'تقویم' };
 
-  function go(pg) {
+  /* ---------- navigation: every screen is a history entry, so the phone's Back button returns to the previous menu ---------- */
+  const TOP = ['times', 'qibla', 'calendar', 'tools', 'settings'];
+  let stack = ['home'];
+  function show(pg) {
     if (page === 'qibla' && pg !== 'qibla') stopQiblaCompass();
-    page = pg; render(); window.scrollTo(0, 0);
+    page = pg; cal.first = null; render(); window.scrollTo(0, 0);
     if (app.classList) { app.classList.remove('enter'); void app.offsetWidth; app.classList.add('enter'); }
   }
-  window.go = go;
+  function go(pg) {
+    if (pg === page) return show(pg);
+    const k = stack.lastIndexOf(pg);
+    if (k >= 0) { history.go(k - (stack.length - 1)); return; }          // already open below: step back to it
+    if (stack.length === 2 && TOP.includes(stack[1]) && TOP.includes(pg)) { // switching between main tabs
+      stack[1] = pg; try { history.replaceState({ i: 1 }, ''); } catch (e) {}
+      return show(pg);
+    }
+    stack.push(pg); try { history.pushState({ i: stack.length - 1 }, ''); } catch (e) {}
+    show(pg);
+  }
+  function goRoot(pg) { stack = [pg]; try { history.replaceState({ i: 0 }, ''); } catch (e) {} show(pg); }
+  function goBack(fb) { if (stack.length > 1) history.back(); else go(fb || 'home'); }
+  window.go = go; window.goBack = goBack;
 
   function header(title, back) {
-    return '<header class="top">' + (back ? '<button class="back" onclick="go(\'' + back + '\')">' + ic('back') + ' بازگشت</button>' : '') + '<h1>' + title + '</h1></header>';
+    return '<header class="top">' +
+      (back ? '<button class="back" onclick="goBack(\'' + back + '\')">' + ic('back') + ' بازگشت</button>' : '') +
+      '<h1>' + title + '</h1>' +
+      (back ? '' : '<button class="ibtn" onclick="go(\'settings\')" aria-label="تنظیمات">' + ic('gear') + '</button>') +
+      '</header>';
   }
   function toggle(id, on) {
     return '<button class="sw' + (on ? ' on' : '') + '" role="switch" aria-checked="' + on + '" data-sw="' + id + '"><span></span></button>';
   }
 
+  /* ---------- calendar: month grid with Shamsi (big), Gregorian + Hijri (small) and occasions ---------- */
+  const SH_M = ['فروردین', 'اردیبهشت', 'خرداد', 'تیر', 'مرداد', 'شهریور', 'مهر', 'آبان', 'آذر', 'دی', 'بهمن', 'اسفند'];
+  const WK = ['ش', 'ی', 'د', 'س', 'چ', 'پ', 'ج'];
+  const DAYMS = 86400000;
+  const _fP = new Intl.DateTimeFormat('en-US-u-ca-persian', { timeZone: 'UTC', year: 'numeric', month: 'numeric', day: 'numeric' });
+  const _fH = new Intl.DateTimeFormat('en-US-u-ca-islamic-civil', { timeZone: 'UTC', year: 'numeric', month: 'numeric', day: 'numeric' });
+  const parts = (f, ms) => { const o = {}; f.formatToParts(new Date(ms)).forEach(x => { if (x.type === 'year' || x.type === 'month' || x.type === 'day') o[x.type] = parseInt(x.value, 10); }); return o; };
+  const occOf = (sp, hp) => (typeof CONTENT !== 'undefined' && CONTENT.occFor) ? CONTENT.occFor(sp.month + '/' + sp.day, hp.month + '/' + hp.day) : [];
+  const cal = { first: null, sel: null };
+  const calToday = () => { const c = cityNow(place().tz); return Date.UTC(c.getUTCFullYear(), c.getUTCMonth(), c.getUTCDate(), 12); };
+  const monthFirst = ms => ms - (parts(_fP, ms).day - 1) * DAYMS;
+  function calMonth(n) {
+    const t = calToday();
+    cal.first = n > 0 ? monthFirst(cal.first + 31 * DAYMS) : monthFirst(cal.first - DAYMS);
+    cal.sel = (monthFirst(t) === cal.first) ? t : cal.first;
+  }
+  function calHtml() {
+    const today = calToday(), off = (S.hijriOffset || 0) * DAYMS;
+    if (cal.first == null) { cal.first = monthFirst(today); cal.sel = today; }
+    const first = cal.first, len = Math.round((monthFirst(first + 31 * DAYMS) - first) / DAYMS), last = first + (len - 1) * DAYMS;
+    const sp0 = parts(_fP, first), lead = (new Date(first).getUTCDay() + 1) % 7;
+    const rng = (loc, o, a, b) => { const f = new Intl.DateTimeFormat(loc, Object.assign({ timeZone: 'UTC' }, o)), x = f.format(new Date(a)), y = f.format(new Date(b)); return x === y ? x : x + ' – ' + y; };
+    const hSub = rng('fa-IR-u-ca-islamic-civil', { month: 'long', year: 'numeric' }, first + off, last + off);
+    const gSub = rng('en-GB', { month: 'short', year: 'numeric' }, first, last);
+    let cells = '';
+    for (let i = 0; i < lead; i++) cells += '<span class="cday blank"></span>';
+    for (let i = 0; i < len; i++) {
+      const ms = first + i * DAYMS, hp = parts(_fH, ms + off), wd = new Date(ms).getUTCDay();
+      const oc = occOf({ month: sp0.month, day: i + 1 }, hp);
+      cells += '<button class="cday' + (wd === 5 ? ' fri' : '') + (oc.length ? ' occ' : '') + (ms === today ? ' today' : '') + (ms === cal.sel ? ' sel' : '') + '" data-cal-day="' + ms + '">' +
+        '<b>' + fa(i + 1) + '</b><small><span>' + new Date(ms).getUTCDate() + '</span><span>' + fa(hp.day) + '</span></small></button>';
+    }
+    const sel = cal.sel, sp = parts(_fP, sel), hs = parts(_fH, sel + off), oc = occOf(sp, hs);
+    const a = _cvFormatAll(new Date(sel)), q = _cvFormatAll(new Date(sel + off)).qamari;
+    return '<div class="cal-h"><button class="cal-nav" data-cal-nav="-1" aria-label="ماه قبل">' + ic('back') + '</button>' +
+      '<div class="t"><b>' + SH_M[sp0.month - 1] + ' ' + fa(sp0.year) + '</b><small>' + esc(hSub) + ' · <span dir="ltr">' + esc(gSub) + '</span></small></div>' +
+      '<button class="cal-nav" data-cal-nav="1" aria-label="ماه بعد">' + ic('chev') + '</button></div>' +
+      '<div class="cal-g">' + WK.map((w, i) => '<span class="cal-w' + (i === 6 ? ' fri' : '') + '">' + w + '</span>').join('') + cells + '</div>' +
+      '<p class="hint cal-leg">اعداد کوچک هر روز: میلادی (چپ) · قمری (راست)</p>' +
+      '<div class="cal-d"><b>' + esc(a.shamsi) + '</b><div>' + esc(q) + '</div><div dir="ltr" style="text-align:right">' + esc(a.gregEn) + '</div>' +
+      (oc.length ? '<div>' + oc.map(o => '<span class="chip">' + esc(o.text) + '</span>').join('') + '</div>' : '') + '</div>' +
+      ((monthFirst(today) !== first || sel !== today) ? '<button class="btn alt wide" data-cal-today="1" style="margin-top:10px">برگشت به امروز</button>' : '');
+  }
+  function refreshCal() { const h = document.getElementById('calHost'); if (h) h.innerHTML = calHtml(); }
+  function renderCalendar() {
+    app.innerHTML = header('تقویم') + '<section class="card cal" id="calHost">' + calHtml() + '</section>' +
+      '<button class="btn alt wide" onclick="go(\'convert\')">' + ic('cal') + ' تبدیل تاریخ</button>';
+  }
+
   /* ---------- pages ---------- */
   function renderHome() {
-    const p = place(), d = dates(p), tms = timesFor(dayStart(p, 0), p), nx = nextPrayer(p);
+    const p = place(), d = dates(p), tms = timesFor(dayStart(p, 0), p), nx = nextPrayer(p), now = Date.now();
     const occ = (typeof CONTENT !== 'undefined' && CONTENT.occFor) ? CONTENT.occFor(d.shamsiMD, d.lunarMD) : [];
-    let occHtml = '';
-    if (occ.length) {
-      occHtml = '<div class="chip-row">' + occ.map(o => '<span class="chip">' + esc(o.text) + '</span>').join('') + '</div>';
-    }
-    // Ramadan focus: imsak + maghrib countdown
+    const occHtml = occ.length ? '<div class="chip-row">' + occ.map(o => '<span class="chip">' + esc(o.text) + '</span>').join('') + '</div>' : '';
     let ramadan = '';
     if (S.ramadanMode && tms.imsak && tms.maghrib) {
-      const now = Date.now();
       let focus = null;
       if (now < tms.imsak.ms) focus = { label: 'تا امساک', ms: tms.imsak.ms };
       else if (now < tms.maghrib.ms) focus = { label: 'تا افطار', ms: tms.maghrib.ms };
       if (focus) {
         const s = Math.max(0, Math.floor((focus.ms - now) / 1000));
         ramadan = '<section class="card ramadan"><div class="lbl">' + focus.label + '</div>' +
-          '<div class="ramadan-cd" id="ramCd">' + fa(p2(Math.floor(s/3600))+':'+p2(Math.floor(s%3600/60))+':'+p2(s%60)) + '</div></section>';
+          '<div class="ramadan-cd" id="ramCd">' + fa(p2(Math.floor(s / 3600)) + ':' + p2(Math.floor(s % 3600 / 60)) + ':' + p2(s % 60)) + '</div></section>';
       }
     }
     const streak = (S.streak && S.streak.days) ? S.streak.days : 0;
     const extra = [];
     if (S.showImsak && tms.imsak) extra.push(['امساک', tms.imsak.min]);
-    if (S.showMidnight && tms.midnight) extra.push(['نیمه‌شب', tms.midnight.min]);
-    const prayerCards = PRAYERS.map(([k, n]) =>
-      '<div class="ptime' + (nx && nx.key === k ? ' on' : '') + '"><i>' + ICON[k] + '</i><span class="pt-n">' + SHORT[k] + '</span><b class="pt-t">' + hm(tms[k].min) + '</b></div>'
-    ).join('') + extra.map(([n, min]) =>
-      '<div class="ptime dim"><span class="pt-n">' + n + '</span><b class="pt-t">' + hm(min) + '</b></div>'
-    ).join('');
+    if (S.showMidnight && tms.midnight) extra.push(['نیمه‌شب شرعی', tms.midnight.min]);
+    const rows = PRAYERS.map(([k]) =>
+      '<div class="trow' + (nx && nx.key === k ? ' on' : (tms[k].ms <= now ? ' past' : '')) + '"><i>' + ICON[k] + '</i><span>' + SHORT[k] + '</span><b>' + hm(tms[k].min) + '</b></div>'
+    ).join('') + extra.map(([n, min]) => '<div class="trow dim"><span>' + n + '</span><b>' + hm(min) + '</b></div>').join('');
+    const q = (id, icn, t, main) => '<button class="qbtn' + (main ? ' main' : '') + '"' + (id === 'namazMode' ? ' id="namazMode"' : ' onclick="go(\'' + id + '\')"') + '><i>' + icn + '</i><span>' + t + '</span></button>';
     app.innerHTML =
-      '<header class="bar">' +
-        '<div class="bar-city">' + ic('pin') + ' <b>' + esc(p.name) + '</b></div>' +
+      '<header class="hbar">' +
+        '<button class="city-pill" onclick="go(\'city\')">' + ic('pin') + '<b>' + esc(p.name) + '</b></button>' +
         '<div id="clock" class="bar-clock">--:--</div>' +
+        '<button class="ibtn" onclick="go(\'settings\')" aria-label="تنظیمات">' + ic('gear') + '</button>' +
       '</header>' +
       '<div class="date-line"><span>' + esc(d.shamsi) + '</span><span class="sep">·</span><span>' + esc(d.qamari) + '</span></div>' +
-      occHtml +
-      ramadan +
-      '<section class="focus">' +
-        '<div class="focus-label">اذان بعدی</div>' +
-        '<div class="focus-name" id="nxName">' + (nx ? SHORT[nx.key] : '—') + '</div>' +
+      occHtml + ramadan +
+      '<section class="hero2">' +
+        '<div><div class="focus-label">اذان بعدی</div><div class="focus-name" id="nxName">' + (nx ? SHORT[nx.key] : '—') + '</div>' +
+        (streak ? '<div class="focus-streak">پیوستگی ' + fa(streak) + ' روز</div>' : '') + '</div>' +
         '<div id="cd" class="focus-cd">--:--:--</div>' +
-        (streak ? '<div class="focus-streak">پیوستگی ' + fa(streak) + ' روز</div>' : '') +
+        (S.showProgress !== false ? '<div class="prog-wrap"><div class="prog-bar" id="progBar"></div><div class="prog-lbl" id="progLbl"></div></div>' : '') +
       '</section>' +
-      '<section class="ptime-grid">' + prayerCards + '</section>' +
-      (S.showProgress !== false ? '<div class="prog-wrap"><div class="prog-bar" id="progBar"></div><div class="prog-lbl" id="progLbl"></div></div>' : '') +
-      '<div class="dock">' +
-        '<button class="dock-btn main" id="namazMode"><i>' + ic('check') + '</i><span>نماز</span></button>' +
-        '<button class="dock-btn" onclick="go(\'qibla\')"><i>' + ic('compass') + '</i><span>قبله</span></button>' +
-        '<button class="dock-btn" onclick="go(\'dhikr\')"><i>' + ic('moon') + '</i><span>ذکر</span></button>' +
-        '<button class="dock-btn" onclick="go(\'times\')"><i>' + ic('clock') + '</i><span>اوقات</span></button>' +
-      '</div>';
+      '<div class="qrow">' + q('namazMode', ic('check'), 'نماز', true) + q('dhikr', ic('moon'), 'ذکر') + q('duas', ic('mic'), 'ادعیه') + q('week', ic('clock'), 'اوقات هفته') + '</div>' +
+      '<h2>اوقات امروز</h2><section class="tlist">' + rows + '</section>' +
+      '<h2>تقویم</h2><section class="card cal" id="calHost">' + calHtml() + '</section>';
     tick();
   }
   function renderTimes() {
@@ -272,23 +332,28 @@
       PRAYERS.map(([k, n]) => '<div class="row dim"><span><i>' + ICON[k] + '</i>' + n + '</span><b>' + hm(t2[k].min) + '</b></div>').join('') + '</section>';
   }
   function renderSettings() {
-    app.innerHTML = header('تنظیمات') +
-      '<div class="menu-grid">' +
-      [
-        ['city', ic('pin'), 'شهر و موقعیت', 'انتخاب از شهرهای ایران'],
-        ['azan', ic('bell'), 'تنظیمات اذان', 'فعال‌سازی و اصلاح دقیقه'],
-        ['muezzin', ic('mic'), 'مؤذن و صدا', 'فایل صوتی اذان'],
-        ['notif', ic('sound'), 'اعلان‌ها', 'مجوز و باتری'],
-        ['method', ic('clock'), 'روش محاسبه', METHOD_LABELS[S.method] || 'تهران'],
-        ['qibla', ic('compass'), 'قبله‌نما', 'فلش دقیق به سمت قبله'],
-        ['display', ic('text'), 'نمایش و حالت', 'فونت، کنتراست، تم'],
-        ['backup', ic('save'), 'پشتیبان‌گیری', 'خروجی و بازیابی'],
-        ['privacy', ic('shield'), 'حریم خصوصی', 'بدون ارسال داده'],
-        ['about', ic('info'), 'درباره برنامه', 'نسخه ' + APP_VERSION]
-      ].map(([id, icn, t, s]) =>
-        '<button class="menu-tile" onclick="go(\'' + id + '\')"><i>' + icn + '</i><span><b>' + t + '</b><small>' + esc(s) + '</small></span></button>'
-      ).join('') +
-      '</div>';
+    const G = [
+      ['اذان و اعلان', [
+        ['azan', 'bell', 'تنظیمات اذان', 'فعال‌سازی و اصلاح دقیقه'],
+        ['muezzin', 'mic', 'مؤذن و صدا', 'فایل صوتی اذان'],
+        ['notif', 'sound', 'اعلان‌ها', 'مجوز و باتری']]],
+      ['موقعیت و محاسبه', [
+        ['city', 'pin', 'شهر و موقعیت', place().name],
+        ['method', 'clock', 'روش محاسبه', METHOD_LABELS[S.method] || 'تهران']]],
+      ['ظاهر', [
+        ['display', 'text', 'نمایش و حالت', 'فونت، کنتراست، تم']]],
+      ['اطلاعات', [
+        ['backup', 'save', 'پشتیبان‌گیری', 'خروجی و بازیابی'],
+        ['privacy', 'shield', 'حریم خصوصی', 'بدون ارسال داده'],
+        ['about', 'info', 'درباره برنامه', 'نسخه ' + fa(APP_VERSION)]]]
+    ];
+    app.innerHTML = header('تنظیمات', 'home') + G.map(([t, rows]) =>
+      '<div class="sgroup-t">' + t + '</div><section class="sgroup">' +
+      rows.map(([id, icn, title, sub]) =>
+        '<button class="srow" onclick="go(\'' + id + '\')"><span class="sic">' + ic(icn) + '</span>' +
+        '<span class="st"><b>' + title + '</b><small>' + esc(sub) + '</small></span><span class="gt">' + ic('chev') + '</span></button>'
+      ).join('') + '</section>'
+    ).join('');
   }
   function renderCity() {
     const favs = S.favCities || [];
@@ -359,7 +424,6 @@
       '<p>روش پیش‌فرض: مؤسسه ژئوفیزیک دانشگاه تهران. می‌توانید روش محاسبه را در تنظیمات تغییر دهید.</p>' +
       '<p class="hint">اوقات را با تقویم رسمی شهر خود مقایسه کنید؛ اختلاف چند دقیقه‌ای ممکن است. از «اصلاح دقیقه» در تنظیمات اذان استفاده کنید.</p>' +
       '<div class="form"><label>اصلاح تاریخ قمری<select id="hj">' + [-2, -1, 0, 1, 2].map(v => '<option value="' + v + '"' + (S.hijriOffset === v ? ' selected' : '') + '>' + (v > 0 ? '+' : '') + fa(v) + ' روز</option>').join('') + '</select></label></div></section>' +
-      '<section class="card"><h3>تغییرات نسخه ۱٫۱</h3><ul class="hint" style="padding-right:18px;margin:0">' +
       '<li>روش‌های محاسبه مختلف (تهران، MWL، ISNA و …)</li><li>قبله‌نما</li><li>موقعیت‌یابی GPS</li><li>اندازه فونت و کنتراست بالا</li><li>پشتیبان‌گیری تنظیمات</li><li>صفحه حریم خصوصی</li></ul></section>' +
       '<section class="card"><h3>ما را دنبال کنید</h3>' +
       '<p class="hint" style="margin:0 0 10px">با دنبال کردن صفحهٔ ما در گیت‌هاب، از نسخه‌های جدید زودتر باخبر می‌شوید و با ستاره‌دادن به پروژه، به بهتر شدن افق شرعی کمک می‌کنید.</p>' +
@@ -463,7 +527,7 @@
     const dist = PT.qiblaDistance ? PT.qiblaDistance(p.lat, p.lng) : null;
     const degFa = fa(Math.round(degTrue));
     const startBrng = degTrue;
-    app.innerHTML = header('قبله‌نما', 'settings') +
+    app.innerHTML = header('قبله‌نما', 'home') +
       '<section class="card qibla-card">' +
       '<div class="qibla-stage"><div class="qibla-arrow" id="qArrow"></div></div>' +
       '<div class="qibla-deg" id="qLive">' + degFa + '°</div>' +
@@ -562,24 +626,15 @@
   }
 
   function renderTools() {
-    const items = [
-      ['dhikr', ic('moon'), 'ذکرشمار', 'تسبیح دیجیتال'],
-      ['rakat', ic('check'), 'رکعت‌شمار', 'شمارش رکعات'],
-      ['qada', ic('clock'), 'قضا', 'نماز و روزه'],
-      ['duas', ic('mic'), 'ادعیه', 'اذکار و دعا'],
-      ['names', ic('sun'), 'اسماء', '۹۹ نام'],
-      ['wudu', ic('sound'), 'وضو', 'راهنما'],
-      ['convert', ic('clock'), 'تبدیل تاریخ', 'همه تقویم‌ها'],
-      ['week', ic('clock'), 'اوقات هفته', '۷ روز'],
-      ['qibla', ic('compass'), 'قبله‌نما', 'فلش دقیق'],
-      ['compare', ic('clock'), 'مقایسه روش', 'چند روش'],
-      ['faq', ic('info'), 'راهنما', 'نکات']
+    const G = [
+      ['عبادت', [['dhikr', 'moon', 'ذکرشمار'], ['rakat', 'check', 'رکعت‌شمار'], ['qada', 'clock', 'قضا'], ['duas', 'mic', 'ادعیه'], ['names', 'sun', 'اسماء'], ['wudu', 'sound', 'وضو']]],
+      ['زمان و تقویم', [['calendar', 'cal', 'تقویم'], ['convert', 'cal', 'تبدیل تاریخ'], ['week', 'clock', 'اوقات هفته'], ['compare', 'clock', 'مقایسه روش']]],
+      ['راهنما', [['faq', 'info', 'راهنما']]]
     ];
-    app.innerHTML = header('ابزارها') +
-      '<div class="menu-grid">' +
-      items.map(([id, icn, title, sub]) =>
-        '<button class="menu-tile" onclick="go(\'' + id + '\')"><i>' + icn + '</i><span><b>' + title + '</b><small>' + sub + '</small></span></button>'
-      ).join('') + '</div>';
+    app.innerHTML = header('ابزارها') + G.map(([t, items]) =>
+      '<div class="sgroup-t">' + t + '</div><div class="tgrid">' +
+      items.map(([id, icn, title]) => '<button class="tbtn" onclick="go(\'' + id + '\')"><i>' + ic(icn) + '</i><span>' + title + '</span></button>').join('') + '</div>'
+    ).join('');
   }
   function renderDhikr() {
     const presets = (CONTENT && CONTENT.DHIKR_PRESETS) || [];
@@ -760,7 +815,7 @@ function renderFaq() {
   }
 
 
-  const R = { home: renderHome, times: renderTimes, settings: renderSettings, city: renderCity, azan: renderAzan, muezzin: renderMuezzin, notif: renderNotif, about: renderAbout, setup: renderSetup, method: renderMethod, qibla: renderQibla, display: renderDisplay, backup: renderBackup, privacy: renderPrivacy, tools: renderTools, dhikr: renderDhikr, rakat: renderRakat, qada: renderQada, duas: renderDuas, names: renderNames, wudu: renderWudu, convert: renderConvert, week: renderWeek, faq: renderFaq, compare: renderCompare };
+  const R = { home: renderHome, times: renderTimes, settings: renderSettings, city: renderCity, azan: renderAzan, muezzin: renderMuezzin, notif: renderNotif, about: renderAbout, setup: renderSetup, method: renderMethod, qibla: renderQibla, display: renderDisplay, backup: renderBackup, privacy: renderPrivacy, tools: renderTools, calendar: renderCalendar, dhikr: renderDhikr, rakat: renderRakat, qada: renderQada, duas: renderDuas, names: renderNames, wudu: renderWudu, convert: renderConvert, week: renderWeek, faq: renderFaq, compare: renderCompare };
   function render() {
     (R[page] || renderHome)();
     if (page === 'setup') {
@@ -770,8 +825,9 @@ function renderFaq() {
     } else {
       nav.style.display = '';
       document.getElementById('app').style.paddingBottom = '';
-      const top = ['home', 'times', 'tools', 'settings'].includes(page) ? page : (['dhikr','rakat','qada','duas','names','wudu','convert','week','faq','qibla','compare'].includes(page) ? 'tools' : 'settings');
-      nav.innerHTML = NAV.map(([id, icn, t]) => '<button class="' + (id === top ? 'on' : '') + '" onclick="go(\'' + id + '\')"><i>' + icn + '</i>' + t + '</button>').join('');
+      const TOOLSUB = ['dhikr', 'rakat', 'qada', 'duas', 'names', 'wudu', 'convert', 'week', 'faq', 'compare'];
+      const top = ['home', 'times', 'qibla', 'calendar', 'tools'].includes(page) ? page : (TOOLSUB.includes(page) ? 'tools' : '');
+      nav.innerHTML = NAV.map(([id, icn, t]) => '<button class="' + (id === top ? 'on' : '') + (id === 'qibla' ? ' mid' : '') + '" onclick="go(\'' + id + '\')"><i>' + icn + '</i>' + t + '</button>').join('');
     }
   }
 
@@ -862,7 +918,13 @@ function renderFaq() {
     awake(false); if (stopAudio !== false) Native.stop();
     if (ovHist) { ovHist = false; try { history.back(); } catch (e) {} }
   }
-  window.addEventListener('popstate', () => { ovHist = false; if (!ov.hidden) closeAzan(); });
+  window.addEventListener('popstate', e => {
+    ovHist = false;
+    if (!ov.hidden) { closeAzan(); return; }                      // Back closes the azan screen first
+    const i = e.state && typeof e.state.i === 'number' ? e.state.i : -1;
+    if (i < 0 || i >= stack.length - 1) return;                   // not one of our screens / nothing to do
+    stack = stack.slice(0, i + 1); show(stack[i]);                // Back = previous menu
+  });
   async function pollAzan() {
     if (document.hidden || ovBusy) return;
     ovBusy = true;
@@ -899,6 +961,9 @@ function renderFaq() {
   document.addEventListener('click', async e => {
     const el = e.target.closest('button'); if (!el) return;
     const msg = id => document.getElementById(id);
+    if (el.dataset.calDay) { cal.sel = +el.dataset.calDay; return refreshCal(); }
+    if (el.dataset.calNav) { calMonth(+el.dataset.calNav); return refreshCal(); }
+    if (el.dataset.calToday) { cal.first = null; return refreshCal(); }
     if (el.dataset.sw) { S.enabled[el.dataset.sw] = !S.enabled[el.dataset.sw]; save(); return renderAzan(); }
     if (el.dataset.city) {
       S.cityId = el.dataset.city; S.custom = null; save(false);
@@ -907,7 +972,7 @@ function renderFaq() {
     }
     if (el.id === 'setupDone') {
       S.setupDone = true; save();
-      go('home');
+      goRoot('home');
       return;
     }
     if (el.id === 'cSave') {
@@ -1136,6 +1201,7 @@ function renderFaq() {
   // اولین ورود: راه‌اندازی شهر و دسترسی‌ها
   applyUiPrefs();
   if (!S.setupDone) page = 'setup';
+  stack = [page]; try { history.replaceState({ i: 0 }, ''); } catch (e) {}
   render();
   if (S.setupDone) schedule();
   setInterval(tick, 1000);
