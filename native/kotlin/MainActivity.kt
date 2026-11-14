@@ -13,6 +13,17 @@ class MainActivity : BridgeActivity() {
         handleAzan(intent)
     }
 
+    /** Keep the app open and let the web UI handle Android's Back button. */
+    @Suppress("DEPRECATION")
+    override fun onBackPressed() {
+        // Always consume the native Back action. The web app returns to its
+        // previous screen, and stays on the home screen when there is no parent.
+        bridge?.webView?.evaluateJavascript(
+            "if (window.handleAndroidBack) { window.handleAndroidBack(); }",
+            null
+        )
+    }
+
     override fun onNewIntent(intent: Intent) {
         super.onNewIntent(intent)
         setIntent(intent)

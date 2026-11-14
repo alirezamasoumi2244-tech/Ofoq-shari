@@ -67,7 +67,7 @@
     showProgress: true,      // prayer progress bar
     preciseCd: true          // countdown with seconds emphasis
   };
-  const APP_VERSION = '1.8.3';
+  const APP_VERSION = '1.8.4';
   const METHOD_LABELS = {
     tehran: 'مؤسسه ژئوفیزیک تهران',
     mwl: 'لیگ جهانی مسلمانان',
@@ -247,6 +247,14 @@
   function goRoot(pg) { stack = [pg]; try { history.replaceState({ i: 0 }, ''); } catch (e) {} show(pg); }
   function goBack(fb) { if (stack.length > 1) history.back(); else go(fb || 'home'); }
   window.go = go; window.goBack = goBack;
+  // Called by MainActivity for the physical/system Back button.
+  // At the root screen it deliberately does nothing instead of exiting.
+  window.handleAndroidBack = function () {
+    if (!ov.hidden) { closeAzan(); return true; }
+    if (stack.length > 1) { goBack(); return true; }
+    if (page !== 'home' && page !== 'setup') { goRoot('home'); return true; }
+    return true;
+  };
 
   function header(title, back) {
     return '<header class="top">' +
