@@ -67,7 +67,7 @@
     showProgress: true,      // prayer progress bar
     preciseCd: true          // countdown with seconds emphasis
   };
-  const APP_VERSION = '1.8.2';
+  const APP_VERSION = '1.8.3';
   const METHOD_LABELS = {
     tehran: 'مؤسسه ژئوفیزیک تهران',
     mwl: 'لیگ جهانی مسلمانان',
@@ -83,6 +83,7 @@
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   let S = load();
+  let setupLocationRequested = false;
   function load() {
     try {
       const raw = localStorage.getItem('azango');
@@ -658,10 +659,10 @@
       ).join('') + '</div>' +
       '<p class="hint setup-sel">شهر فعلی: <b>' + esc(selected.name) + '</b></p></section>' +
       '<section class="card setup-card"><h3>' + ic('bell') + ' دسترسی‌ها</h3>' +
-      '<p class="hint">برای پخش اذان و نمایش اعلان، اجازه اعلان‌ها لازم است. دسترسی موقعیت برای تشخیص خودکار شهر استفاده می‌شود و فقط روی دستگاه می‌ماند.</p>' +
+      '<p class="hint">برای پخش اذان و نمایش اعلان، اجازه اعلان‌ها لازم است. در اولین ورود، اجازه موقعیت (GPS) هم برای تشخیص خودکار نزدیک‌ترین شهر درخواست می‌شود؛ موقعیت فقط روی دستگاه می‌ماند.</p>' +
       '<button class="btn" id="nAsk">' + ic('bell') + ' اجازه نمایش اعلان</button>' +
       '<button class="btn alt" id="nBat">خارج کردن از محدودیت باتری</button>' +
-      '<button class="btn alt" id="setupGps">' + ic('pin') + ' تشخیص شهر با GPS</button>' +
+      '<button class="btn alt" id="setupGps">' + ic('pin') + ' تلاش دوباره برای تشخیص شهر با GPS</button>' +
       '<div id="st" class="hint">وضعیت دسترسی بعد از درخواست نمایش داده می‌شود.</div>' +
       '<div id="gpsMsg" class="hint"></div></section>' +
       '<button class="btn wide setup-finish" id="setupDone">شروع استفاده از افق شرعی</button>' +
@@ -672,6 +673,20 @@
         const el = document.getElementById('st'); if (!el || !s) return;
         el.innerHTML = 'اعلان: <b>' + (s.notifications ? 'فعال ✓' : 'غیرفعال') + '</b> · بدون محدودیت باتری: <b>' + (s.ignoringBattery ? 'بله ✓' : 'خیر') + '</b>';
       });
+      // درخواست مجوز موقعیت فقط یک‌بار هنگام اولین راه‌اندازی؛ در صورت موافقت، شهر نزدیک خودکار انتخاب می‌شود.
+      if (!setupLocationRequested) {
+        setupLocationRequested = true;
+        Native.askLocation().then(result => {
+          if (!result || !result.granted || !navigator.geolocation) return;
+          navigator.geolocation.getCurrentPosition(pos => {
+            const gpsMsg = document.getElementById('gpsMsg');
+            applyGpsPosition(pos.coords.latitude, pos.coords.longitude, gpsMsg);
+          }, err => {
+            const gpsMsg = document.getElementById('gpsMsg');
+            if (gpsMsg) gpsMsg.textContent = 'موقعیت دریافت نشد؛ شهر را دستی انتخاب کنید یا دوباره GPS را امتحان کنید.';
+          }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
+        }).catch(() => {});
+      }
     }
   }
 

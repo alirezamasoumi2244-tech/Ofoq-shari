@@ -14,6 +14,7 @@
     stop: () => call('stop'),
     status: () => call('status'),
     askNotifications: () => call('askNotifications'),
+    askLocation: () => call('askLocation'),
     batterySettings: () => call('batterySettings'),
     appSettings: () => call('appSettings'),
     state: () => call('state'),

@@ -20,12 +20,17 @@ import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
+import com.getcapacitor.PermissionCallback
+import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
 import org.json.JSONArray
 import java.io.File
 
-@CapacitorPlugin(name = "AzanPlugin")
+@CapacitorPlugin(
+    name = "AzanPlugin",
+    permissions = [Permission(alias = "location", strings = [Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION])]
+)
 class AzanPlugin : Plugin() {
 
     @PluginMethod
@@ -88,6 +93,24 @@ class AzanPlugin : Plugin() {
             ActivityCompat.requestPermissions(activity, arrayOf(Manifest.permission.POST_NOTIFICATIONS), 7001)
         }
         call.resolve(JSObject().put("notifications", NotificationManagerCompat.from(context).areNotificationsEnabled()))
+    }
+
+    @PluginMethod
+    fun askLocation(call: PluginCall) {
+        val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        if (fine || coarse) {
+            call.resolve(JSObject().put("granted", true).put("precise", fine))
+            return
+        }
+        requestPermissionForAlias("location", call, "locationPermsCallback")
+    }
+
+    @PermissionCallback
+    private fun locationPermsCallback(call: PluginCall) {
+        val fine = getPermissionState("location") == com.getcapacitor.PermissionState.GRANTED
+        val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
+        call.resolve(JSObject().put("granted", fine || coarse).put("precise", fine))
     }
 
     @PluginMethod
