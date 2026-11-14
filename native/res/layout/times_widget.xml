@@ -4,15 +4,15 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="14dp"
-    android:background="#E60A3D2E">
+    android:padding="12dp"
+    android:background="#E60F1419">
 
     <TextView
         android:id="@+id/wgt_city"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="افق شرعی"
-        android:textColor="#B3E7F6EE"
+        android:textColor="#99EEF4FA"
         android:textSize="12sp"
         android:textDirection="rtl" />
 
@@ -22,7 +22,7 @@
         android:layout_height="wrap_content"
         android:text="اذان بعدی"
         android:textColor="#FFFFFFFF"
-        android:textSize="16sp"
+        android:textSize="15sp"
         android:textStyle="bold"
         android:textDirection="rtl"
         android:paddingTop="4dp" />
@@ -32,8 +32,8 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text="--:--"
-        android:textColor="#FF46E3AE"
-        android:textSize="28sp"
+        android:textColor="#FF3DD6C3"
+        android:textSize="30sp"
         android:textStyle="bold"
         android:fontFamily="sans-serif-medium"
         android:textDirection="ltr"
@@ -44,7 +44,7 @@
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:text=""
-        android:textColor="#B3E7F6EE"
+        android:textColor="#99EEF4FA"
         android:textSize="12sp"
         android:textDirection="rtl"
         android:paddingTop="2dp" />

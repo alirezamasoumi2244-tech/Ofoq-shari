@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/wgt_full_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="10dp"
+    android:background="#E60F1419">
+
+    <TextView
+        android:id="@+id/wgt_full_city"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="اوقات امروز"
+        android:textColor="#FF3DD6C3"
+        android:textSize="13sp"
+        android:textStyle="bold"
+        android:textDirection="rtl" />
+
+    <TextView
+        android:id="@+id/wgt_full_body"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="—"
+        android:textColor="#FFFFFFFF"
+        android:textSize="13sp"
+        android:lineSpacingExtra="4dp"
+        android:textDirection="rtl"
+        android:paddingTop="6dp"
+        android:fontFamily="sans-serif-medium" />
+</LinearLayout>

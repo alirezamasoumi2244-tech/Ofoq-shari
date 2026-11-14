@@ -92,7 +92,31 @@
     let brng = Math.atan2(y, x) / R;
     return fix(brng, 360);
   }
+  /** Great-circle distance to Kaaba in km */
+  function qiblaDistance(lat, lng) {
+    const kaabaLat = 21.4225, kaabaLng = 39.8262;
+    const Rkm = 6371;
+    const dLat = (kaabaLat - lat) * R, dLng = (kaabaLng - lng) * R;
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat*R)*Math.cos(kaabaLat*R)*Math.sin(dLng/2)**2;
+    return Math.round(2 * Rkm * Math.asin(Math.min(1, Math.sqrt(a))));
+  }
+  /**
+   * Approximate magnetic declination for Iran (degrees East positive).
+   * Device compass reports magnetic north; qibla() is true north.
+   * Typical Iran: ~3° to 5° East.
+   */
+  function magneticDeclination(lat, lng) {
+    // Simple regional model for Iran: ~4.2°E around Tehran, slightly less in east
+    const base = 4.2;
+    const lonAdj = (lng - 51.4) * 0.03;
+    const latAdj = (lat - 35.7) * -0.02;
+    return base + lonAdj + latAdj;
+  }
+  /** Qibla from magnetic north (for compass sensors) */
+  function qiblaMagnetic(lat, lng) {
+    return fix(qibla(lat, lng) - magneticDeclination(lat, lng), 360);
+  }
 
-  const api = { compute, METHODS, qibla, METHOD: METHODS.tehran };
+  const api = { compute, METHODS, qibla, qiblaDistance, qiblaMagnetic, magneticDeclination, METHOD: METHODS.tehran };
   if (typeof module !== 'undefined') module.exports = api; else root.PT = api;
 })(this);

@@ -57,9 +57,14 @@
     ramadanMode: false,
     streak: { days: 0, last: '' },
     shakeDhikr: true,
-    amoled: false
+    amoled: false,
+    qiblaOffset: 0,          // manual calibration degrees
+    useMagDecl: true,        // compensate magnetic declination
+    favCities: ['tehran'],   // quick favorites
+    showProgress: true,      // prayer progress bar
+    preciseCd: true          // countdown with seconds emphasis
   };
-  const APP_VERSION = '1.6.0';
+  const APP_VERSION = '1.8.0';
   const METHOD_LABELS = {
     tehran: 'مؤسسه ژئوفیزیک تهران',
     mwl: 'لیگ جهانی مسلمانان',
@@ -164,7 +169,18 @@
   function muezzin() { return S.muezzins.find(m => m.id === S.muezzinId) || S.muezzins[0]; }
   function schedule() {
     if (!Native.available()) return;
-    Native.schedule(buildEvents(), { path: muezzin().path || '', volume: S.volume, city: place().name });
+    const p = place();
+    const tms = timesFor(dayStart(p, 0), p);
+    const today = {};
+    PRAYERS.forEach(([k]) => { today[k] = hm(tms[k].min); });
+    if (tms.imsak) today.imsak = hm(tms.imsak.min);
+    Native.schedule(buildEvents(), {
+      path: muezzin().path || '',
+      volume: S.volume,
+      city: p.name,
+      today: today,
+      method: S.method || 'tehran'
+    });
   }
 
   /* ---------- UI helpers ---------- */
@@ -233,6 +249,7 @@
         (streak ? '<div class="focus-streak">پیوستگی ' + fa(streak) + ' روز</div>' : '') +
       '</section>' +
       '<section class="ptime-grid">' + prayerCards + '</section>' +
+      (S.showProgress !== false ? '<div class="prog-wrap"><div class="prog-bar" id="progBar"></div><div class="prog-lbl" id="progLbl"></div></div>' : '') +
       '<div class="dock">' +
         '<button class="dock-btn main" id="namazMode"><i>' + ic('check') + '</i><span>نماز</span></button>' +
         '<button class="dock-btn" onclick="go(\'qibla\')"><i>' + ic('compass') + '</i><span>قبله</span></button>' +
@@ -255,32 +272,56 @@
       PRAYERS.map(([k, n]) => '<div class="row dim"><span><i>' + ICON[k] + '</i>' + n + '</span><b>' + hm(t2[k].min) + '</b></div>').join('') + '</section>';
   }
   function renderSettings() {
-    app.innerHTML = header('تنظیمات') + '<section class="menu">' +
-      [['tools', ic('moon'), 'ابزارهای مذهبی', 'ذکر، رکعت، دعا، قضا'],
-       ['city', ic('pin'), 'انتخاب شهر', place().name],
-       ['method', ic('clock'), 'روش محاسبه اوقات', METHOD_LABELS[S.method] || 'تهران'],
-       ['qibla', ic('compass'), 'قبله‌نما', 'جهت قبله از موقعیت شما'],
-       ['azan', ic('sound'), 'تنظیمات اذان', 'روشن/خاموش، صدا، آزمایش'],
-       ['muezzin', ic('mic'), 'مؤذن و فایل صوتی', muezzin().name],
-       ['notif', ic('bell'), 'اعلان‌ها', 'قبل از اذان، باتری'],
-       ['display', ic('text'), 'نمایش و حالت', (S.uiMode === 'elder' ? 'سالمندان' : 'عادی') + ' · تم و ظاهر'],
-       ['backup', ic('save'), 'پشتیبان‌گیری تنظیمات', 'خروجی و بازیابی'],
-       ['privacy', ic('shield'), 'حریم خصوصی', 'سیاست حفظ حریم خصوصی'],
-       ['about', ic('info'), 'درباره برنامه', 'نسخه ' + APP_VERSION]]
-        .map(([id, icn, t, s]) => '<button class="mi" onclick="go(\'' + id + '\')"><i>' + icn + '</i><span><b>' + t + '</b><small>' + esc(s) + '</small></span><em>' + ic('chev') + '</em></button>').join('') + '</section>';
+    app.innerHTML = header('تنظیمات') +
+      '<div class="menu-grid">' +
+      [
+        ['city', ic('pin'), 'شهر و موقعیت', 'انتخاب از شهرهای ایران'],
+        ['azan', ic('bell'), 'تنظیمات اذان', 'فعال‌سازی و اصلاح دقیقه'],
+        ['muezzin', ic('mic'), 'مؤذن و صدا', 'فایل صوتی اذان'],
+        ['notif', ic('sound'), 'اعلان‌ها', 'مجوز و باتری'],
+        ['method', ic('clock'), 'روش محاسبه', METHOD_LABELS[S.method] || 'تهران'],
+        ['qibla', ic('compass'), 'قبله‌نما', 'فلش دقیق به سمت قبله'],
+        ['display', ic('text'), 'نمایش و حالت', 'فونت، کنتراست، تم'],
+        ['backup', ic('save'), 'پشتیبان‌گیری', 'خروجی و بازیابی'],
+        ['privacy', ic('shield'), 'حریم خصوصی', 'بدون ارسال داده'],
+        ['about', ic('info'), 'درباره برنامه', 'نسخه ' + APP_VERSION]
+      ].map(([id, icn, t, s]) =>
+        '<button class="menu-tile" onclick="go(\'' + id + '\')"><i>' + icn + '</i><span><b>' + t + '</b><small>' + esc(s) + '</small></span></button>'
+      ).join('') +
+      '</div>';
   }
   function renderCity() {
-    const c = S.custom;
+    const favs = S.favCities || [];
+    const provs = Array.from(new Set(CITIES.map(c => c.prov))).sort((a,b) => a.localeCompare(b, 'fa'));
+    const list = CITIES.slice().sort((p, q) => p.name.localeCompare(q.name, 'fa'));
     app.innerHTML = header('انتخاب شهر', 'settings') +
-      '<button class="btn wide" id="cGps" style="margin-bottom:12px">' + ic('gps') + ' استفاده از موقعیت فعلی (GPS)</button>' +
-      '<div id="gpsMsg" class="hint" style="margin-bottom:10px"></div>' +
-      '<input id="cSearch" type="search" placeholder="جستجوی شهر یا استان" autocomplete="off"><section class="menu" id="cList">' +
-      CITIES.slice().sort((p, q) => p.name.localeCompare(q.name, 'fa')).map(x => '<button class="mi city' + (!S.custom && S.cityId === x.id ? ' sel' : '') + '" data-city="' + x.id + '" data-search="' + x.name + ' ' + x.prov + '"><span><b>' + x.name + '</b><small>استان ' + x.prov + '</small></span><em>' + (!S.custom && S.cityId === x.id ? ic('check') : '') + '</em></button>').join('') + '</section>' +
-      '<h2>موقعیت دستی</h2><section class="form"><label>نام<input id="cName" value="' + esc(c ? c.name : '') + '" placeholder="مثلاً روستای من"></label>' +
-      '<label>عرض جغرافیایی<input id="cLat" inputmode="decimal" dir="ltr" value="' + (c ? c.lat : '') + '" placeholder="35.6892"></label>' +
-      '<label>طول جغرافیایی<input id="cLng" inputmode="decimal" dir="ltr" value="' + (c ? c.lng : '') + '" placeholder="51.3890"></label>' +
-      '<label>اختلاف ساعت با UTC<input id="cTz" inputmode="decimal" dir="ltr" value="' + (c ? c.tz : '3.5') + '"></label>' +
-      '<button class="btn" id="cSave">ذخیره موقعیت دستی</button><div id="cMsg" class="hint"></div></section>';
+      '<p class="hint">فقط شهرهای ایران. می‌توانید بر اساس استان فیلتر کنید یا به علاقه‌مندی‌ها اضافه کنید.</p>' +
+      (favs.length ? '<div class="section-label">علاقه‌مندی‌ها</div><div class="fav-row">' +
+        favs.map(id => {
+          const c = CITIES.find(x => x.id === id);
+          if (!c) return '';
+          return '<button class="chip' + (!S.custom && S.cityId === id ? ' on' : '') + '" data-city="' + id + '">' + esc(c.name) + '</button>';
+        }).join('') + '</div>' : '') +
+      '<section class="form"><label>فیلتر استان<select id="provFilter"><option value="">همه استان‌ها</option>' +
+      provs.map(pr => '<option value="' + esc(pr) + '">' + esc(pr) + '</option>').join('') +
+      '</select></label>' +
+      '<input id="cSearch" type="search" placeholder="جستجوی شهر یا استان" autocomplete="off"></section>' +
+      '<section class="menu menu-modern" id="cList">' +
+      list.map(x =>
+        '<div class="mi city' + (!S.custom && S.cityId === x.id ? ' sel' : '') + '" data-city="' + x.id + '" data-search="' + x.name + ' ' + x.prov + '" data-prov="' + x.prov + '">' +
+        '<button class="mi-main" data-city="' + x.id + '"><span><b>' + esc(x.name) + '</b><small>استان ' + esc(x.prov) + '</small></span></button>' +
+        '<button class="fav-btn' + (favs.indexOf(x.id) >= 0 ? ' on' : '') + '" data-fav="' + x.id + '" aria-label="علاقه">★</button>' +
+        '</div>'
+      ).join('') + '</section>' +
+      '<h2 class="section-label">موقعیت دستی / GPS</h2>' +
+      '<section class="form">' +
+      '<label>نام<input id="cName" value="' + esc((S.custom && S.custom.name) || '') + '" placeholder="مثلاً محله من"></label>' +
+      '<div class="actions"><label>عرض<input id="cLat" dir="ltr" inputmode="decimal" value="' + ((S.custom && S.custom.lat) || '') + '"></label>' +
+      '<label>طول<input id="cLng" dir="ltr" inputmode="decimal" value="' + ((S.custom && S.custom.lng) || '') + '"></label></div>' +
+      '<label>منطقه زمانی (ساعت از UTC)<input id="cTz" dir="ltr" inputmode="decimal" value="' + ((S.custom && S.custom.tz) != null ? S.custom.tz : 3.5) + '"></label>' +
+      '<button class="btn" id="cSave">ذخیره موقعیت دستی</button>' +
+      '<button class="btn alt" id="cGps">موقعیت فعلی (GPS)</button>' +
+      '<div id="cMsg" class="hint"></div><div id="gpsMsg" class="hint"></div></section>';
   }
   function renderAzan() {
     app.innerHTML = header('تنظیمات اذان', 'settings') +
@@ -342,54 +383,72 @@
   }
   function startQiblaCompass(bearing) {
     stopQiblaCompass();
-    qiblaBearing = bearing;
+    // bearing is true-north qibla; convert for magnetic compass if enabled
+    const p = place();
+    let target = bearing;
+    if (S.useMagDecl !== false && PT.qiblaMagnetic) {
+      target = PT.qiblaMagnetic(p.lat, p.lng);
+    }
+    target = (target + (S.qiblaOffset || 0) + 360) % 360;
+    qiblaBearing = target;
     qiblaSmooth = 0;
+    let lastVib = 0;
     const onOrient = (e) => {
-      // Absolute heading if available; else webkitCompassHeading (iOS); else alpha (relative)
       let heading = null;
+      // Prefer absolute / compass heading
       if (typeof e.webkitCompassHeading === 'number' && !isNaN(e.webkitCompassHeading)) {
-        heading = e.webkitCompassHeading; // 0 = North, clockwise
-      } else if (e.absolute && typeof e.alpha === 'number' && !isNaN(e.alpha)) {
-        heading = (360 - e.alpha) % 360; // alpha is counterclockwise from north on many Android
+        heading = e.webkitCompassHeading;
+      } else if (e.absolute === true && typeof e.alpha === 'number' && !isNaN(e.alpha)) {
+        heading = (360 - e.alpha) % 360;
       } else if (typeof e.alpha === 'number' && !isNaN(e.alpha)) {
         heading = (360 - e.alpha) % 360;
       }
       if (heading == null) return;
-      // Shortest-path smoothing
+      // Screen orientation compensation (phone rotated in hand / landscape)
+      let orient = 0;
+      try {
+        if (screen.orientation && typeof screen.orientation.angle === 'number') orient = screen.orientation.angle;
+        else if (typeof window.orientation === 'number') orient = window.orientation;
+      } catch (_) {}
+      heading = (heading + orient + 360) % 360;
+      // Adaptive smoothing: less lag when almost aligned
       let diff = heading - qiblaSmooth;
       while (diff > 180) diff -= 360;
       while (diff < -180) diff += 360;
-      qiblaSmooth = (qiblaSmooth + diff * 0.25 + 360) % 360;
+      const alpha = Math.abs(diff) < 15 ? 0.45 : 0.22;
+      qiblaSmooth = (qiblaSmooth + diff * alpha + 360) % 360;
       qiblaHeading = qiblaSmooth;
       const arrow = document.getElementById('qArrow');
       const status = document.getElementById('qStatus');
       const liveDeg = document.getElementById('qLive');
       if (!arrow) return;
-      // فلش همیشه به سمت قبله قفل شده؛ وقتی بالا باشد رو به قبله‌اید
       const rot = (qiblaBearing - qiblaHeading + 360) % 360;
       arrow.style.transform = 'rotate(' + rot + 'deg)';
-      if (liveDeg) liveDeg.textContent = fa(Math.round(rot)) + '°';
+      const off = Math.min(Math.abs(rot), 360 - Math.abs(rot));
+      if (liveDeg) liveDeg.textContent = fa(Math.round(off)) + '°';
       if (status) {
-        const aligned = Math.min(Math.abs(rot), 360 - Math.abs(rot)) < 8;
+        const aligned = off < 4;
         const beta = typeof e.beta === 'number' ? e.beta : 0;
         const gamma = typeof e.gamma === 'number' ? e.gamma : 0;
-        const flat = Math.abs(beta) < 25 && Math.abs(gamma) < 25;
-        let msg = aligned ? '✓ رو به قبله هستید' : 'گوشی را بچرخانید تا فلش بالا برود';
-        if (!flat) msg += ' · گوشی را صاف نگه دارید';
+        const flat = Math.abs(beta) < 20 && Math.abs(gamma) < 20;
+        let msg = aligned ? '✓ رو به قبله هستید' : (off < 15 ? 'نزدیک — کمی بچرخانید' : 'گوشی را بچرخانید تا فلش بالا برود');
+        if (!flat) msg += ' · گوشی را افقی نگه دارید';
         status.textContent = msg;
         status.className = 'hint' + (aligned && flat ? ' q-ok' : '');
         const lv = document.getElementById('qLevel');
         if (lv) lv.textContent = flat ? 'تراز افقی ✓' : 'کج — صاف کنید';
+        if (aligned && flat && S.vibrateQibla && navigator.vibrate && Date.now() - lastVib > 2500) {
+          navigator.vibrate([40, 30, 40]);
+          lastVib = Date.now();
+        }
       }
     };
     qiblaListener = onOrient;
-    // Prefer absolute orientation
     if ('ondeviceorientationabsolute' in window) {
       window.addEventListener('deviceorientationabsolute', onOrient, true);
     } else {
       window.addEventListener('deviceorientation', onOrient, true);
     }
-    // Some browsers need permission (iOS 13+)
     if (typeof DeviceOrientationEvent !== 'undefined' && typeof DeviceOrientationEvent.requestPermission === 'function') {
       DeviceOrientationEvent.requestPermission().then(state => {
         const el = document.getElementById('qStatus');
@@ -399,17 +458,33 @@
   }
   function renderQibla() {
     const p = place();
-    const deg = PT.qibla(p.lat, p.lng);
-    const degFa = fa(Math.round(deg));
+    const degTrue = PT.qibla(p.lat, p.lng);
+    const degMag = PT.qiblaMagnetic ? PT.qiblaMagnetic(p.lat, p.lng) : degTrue;
+    const dist = PT.qiblaDistance ? PT.qiblaDistance(p.lat, p.lng) : null;
+    const degFa = fa(Math.round(degTrue));
+    const startBrng = degTrue;
     app.innerHTML = header('قبله‌نما', 'settings') +
       '<section class="card qibla-card">' +
       '<div class="qibla-stage"><div class="qibla-arrow" id="qArrow"></div></div>' +
       '<div class="qibla-deg" id="qLive">' + degFa + '°</div>' +
-      '<p class="hint" id="qStatus">در حال اتصال به قطب‌نما… گوشی را صاف نگه دارید</p>' +
+      '<p class="hint" id="qStatus">در حال اتصال به قطب‌نما… گوشی را صاف و افقی نگه دارید</p>' +
       '<p class="hint" id="qLevel">تراز افقی…</p></section>' +
-      '<p class="hint">فقط یک فلش که همیشه به سمت قبله قفل شده است. وقتی فلش دقیقاً بالا باشد، رو به قبله ایستاده‌اید.</p>' +
-      '<p class="hint">زاویه از شمال: <b>' + degFa + '°</b> · <b>' + esc(p.name) + '</b></p>';
-    setTimeout(() => startQiblaCompass(deg), 50);
+      '<section class="card">' +
+      '<div class="row"><span>زاویه حقیقی از شمال</span><b>' + degFa + '°</b></div>' +
+      '<div class="row"><span>زاویه مغناطیسی (قطب‌نما)</span><b>' + fa(Math.round(degMag)) + '°</b></div>' +
+      (dist != null ? '<div class="row"><span>فاصله تا کعبه</span><b>' + fa(dist) + ' کیلومتر</b></div>' : '') +
+      '<div class="row"><span>موقعیت</span><b>' + esc(p.name) + '</b></div></section>' +
+      '<section class="form">' +
+      '<label>کالیبراسیون دستی (درجه)<select id="qOff">' +
+      [-10,-8,-6,-4,-2,0,2,4,6,8,10].map(v =>
+        '<option value="' + v + '"' + ((S.qiblaOffset||0) === v ? ' selected' : '') + '>' +
+        (v > 0 ? '+' : '') + fa(v) + '°</option>').join('') +
+      '</select></label>' +
+      '<div class="mi"><span><b>جبران انحراف مغناطیسی</b><small>دقیق‌تر برای ایران</small></span>' +
+      '<button class="sw' + (S.useMagDecl !== false ? ' on' : '') + '" data-magdec="1"></button></div>' +
+      '</section>' +
+      '<p class="hint">فلش همیشه به سمت قبله قفل است. وقتی فلش بالا باشد و پیام سبز شود، رو به قبله‌اید. از فلز و آهنربا دور بمانید و گوشی را یک‌بار به شکل عدد ۸ بچرخانید تا قطب‌نما کالیبره شود.</p>';
+    setTimeout(() => startQiblaCompass(startBrng), 50);
   }
   function renderDisplay() {
     const elder = S.uiMode === 'elder';
@@ -487,22 +562,24 @@
   }
 
   function renderTools() {
-    app.innerHTML = header('ابزارهای مذهبی') + '<section class="menu">' +
-      [
-        ['dhikr', ic('moon'), 'ذکرشمار (تسبیح)', 'شمارش ذکر با لمس یا ویبره'],
-        ['rakat', ic('check'), 'رکعت‌شمار', 'شمارش رکعات نماز'],
-        ['qada', ic('clock'), 'نماز و روزه قضا', 'ثبت و پیگیری قضا'],
-        ['duas', ic('mic'), 'ادعیه و اذکار', 'اذکار صبح و شام، دعاهای کوتاه'],
-        ['names', ic('sun'), 'اسماء الحسنی', '۹۹ نام خداوند'],
-        ['wudu', ic('sound'), 'راهنمای وضو و نماز', 'مراحل وضو و رکعات'],
-        ['convert', ic('clock'), 'تبدیل تاریخ', 'شمسی ↔ قمری ↔ میلادی'],
-        ['week', ic('clock'), 'اوقات هفته', 'جدول ۷ روز آینده'],
-        ['qibla', ic('compass'), 'قبله‌نما', 'جهت زنده قبله'],
-        ['compare', ic('clock'), 'مقایسه روش‌های محاسبه', 'جدول چند روش کنار هم'],
-        ['faq', ic('info'), 'راهنما و نکات', 'سوالات پرتکرار']
-      ].map(([id, icn, title, sub]) =>
-        '<button class="mi" onclick="go(\'' + id + '\')"><i>' + icn + '</i><span><b>' + title + '</b><small>' + sub + '</small></span><em>' + ic('chev') + '</em></button>'
-      ).join('') + '</section>';
+    const items = [
+      ['dhikr', ic('moon'), 'ذکرشمار', 'تسبیح دیجیتال'],
+      ['rakat', ic('check'), 'رکعت‌شمار', 'شمارش رکعات'],
+      ['qada', ic('clock'), 'قضا', 'نماز و روزه'],
+      ['duas', ic('mic'), 'ادعیه', 'اذکار و دعا'],
+      ['names', ic('sun'), 'اسماء', '۹۹ نام'],
+      ['wudu', ic('sound'), 'وضو', 'راهنما'],
+      ['convert', ic('clock'), 'تبدیل تاریخ', 'همه تقویم‌ها'],
+      ['week', ic('clock'), 'اوقات هفته', '۷ روز'],
+      ['qibla', ic('compass'), 'قبله‌نما', 'فلش دقیق'],
+      ['compare', ic('clock'), 'مقایسه روش', 'چند روش'],
+      ['faq', ic('info'), 'راهنما', 'نکات']
+    ];
+    app.innerHTML = header('ابزارها') +
+      '<div class="menu-grid">' +
+      items.map(([id, icn, title, sub]) =>
+        '<button class="menu-tile" onclick="go(\'' + id + '\')"><i>' + icn + '</i><span><b>' + title + '</b><small>' + sub + '</small></span></button>'
+      ).join('') + '</div>';
   }
   function renderDhikr() {
     const presets = (CONTENT && CONTENT.DHIKR_PRESETS) || [];
@@ -700,11 +777,44 @@ function renderFaq() {
 
   /* ---------- live tick (GPU-friendly: minimal style writes) ---------- */
   let _ringSec = -1;
+
+  function updatePrayerProgress() {
+    if (S.showProgress === false) return;
+    const bar = document.getElementById('progBar');
+    const lbl = document.getElementById('progLbl');
+    if (!bar) return;
+    const p = place();
+    const now = Date.now();
+    const tms = timesFor(dayStart(p, 0), p);
+    const keys = AZAN;
+    let prev = null, next = null;
+    for (const k of keys) {
+      if (tms[k].ms <= now) prev = k;
+      else if (!next) next = k;
+    }
+    if (!next) {
+      const t2 = timesFor(dayStart(p, 1), p);
+      next = keys[0];
+      const start = prev ? tms[prev].ms : dayStart(p, 0);
+      const end = t2[next].ms;
+      const pct = Math.max(0, Math.min(100, ((now - start) / (end - start)) * 100));
+      bar.style.width = pct + '%';
+      if (lbl) lbl.textContent = 'تا ' + SHORT[next] + ' فردا';
+      return;
+    }
+    const start = prev ? tms[prev].ms : dayStart(p, 0);
+    const end = tms[next].ms;
+    const pct = Math.max(0, Math.min(100, ((now - start) / Math.max(1, end - start)) * 100));
+    bar.style.width = pct + '%';
+    if (lbl) lbl.textContent = (prev ? SHORT[prev] + ' → ' : '') + SHORT[next] + ' · ' + fa(Math.round(pct)) + '٪';
+  }
+
   function tick() {
     const p = place(), c = cityNow(p.tz);
     const key = c.getUTCFullYear() + '-' + c.getUTCMonth() + '-' + c.getUTCDate();
     if (page === 'home') {
       if (lastDay && key !== lastDay) { lastDay = key; renderHome(); schedule(); return; }
+      updatePrayerProgress();
       const ram = document.getElementById('ramCd');
       if (ram && S.ramadanMode) {
         const tms = timesFor(dayStart(p, 0), p); const now = Date.now();
@@ -839,6 +949,21 @@ function renderFaq() {
     if (el.dataset.method) {
       S.method = el.dataset.method; save(); renderMethod();
     }
+    if (el.dataset.magdec) {
+      S.useMagDecl = !(S.useMagDecl !== false);
+      save(false); renderQibla();
+    }
+    if (el.dataset.fav) {
+      const id = el.dataset.fav;
+      if (!S.favCities) S.favCities = [];
+      const i = S.favCities.indexOf(id);
+      if (i >= 0) S.favCities.splice(i, 1); else {
+        if (S.favCities.length >= 6) S.favCities.shift();
+        S.favCities.push(id);
+      }
+      save(false); renderCity();
+    }
+
     if (el.dataset.uimode) {
       S.uiMode = el.dataset.uimode;
       applyUiPrefs(); save(false); renderDisplay();
@@ -938,7 +1063,15 @@ function renderFaq() {
     }
   });
   document.addEventListener('input', e => {
-    if (e.target.id === 'cSearch') { const q = e.target.value.trim(); document.querySelectorAll('#cList .mi').forEach(b => { b.style.display = (!q || b.dataset.search.indexOf(q) >= 0) ? '' : 'none'; }); }
+    if (e.target.id === 'cSearch') {
+      const q = e.target.value.trim();
+      const prov = (document.getElementById('provFilter') || {}).value || '';
+      document.querySelectorAll('#cList .city').forEach(b => {
+        const matchQ = !q || (b.dataset.search || '').indexOf(q) >= 0;
+        const matchP = !prov || b.dataset.prov === prov;
+        b.style.display = (matchQ && matchP) ? '' : 'none';
+      });
+    }
     if (e.target.id === 'vol') { S.volume = e.target.value / 100; document.getElementById('volV').textContent = fa(e.target.value) + '٪'; }
   });
   document.addEventListener('change', e => {
@@ -956,6 +1089,22 @@ function renderFaq() {
       S.fontScale = parseFloat(e.target.value) || 1;
       applyUiPrefs(); save(false);
     }
+    if (e.target.id === 'qOff') {
+      S.qiblaOffset = parseInt(e.target.value, 10) || 0;
+      save(false);
+      const p = place();
+      startQiblaCompass(PT.qibla(p.lat, p.lng));
+    }
+    if (e.target.id === 'provFilter') {
+      const prov = e.target.value;
+      document.querySelectorAll('#cList .city').forEach(b => {
+        const matchProv = !prov || b.dataset.prov === prov;
+        const q = (document.getElementById('cSearch') || {}).value || '';
+        const matchQ = !q.trim() || (b.dataset.search || '').indexOf(q.trim()) >= 0;
+        b.style.display = (matchProv && matchQ) ? '' : 'none';
+      });
+    }
+
     if (e.target.id === 'bkFile' && e.target.files && e.target.files[0]) {
       const f = e.target.files[0];
       const reader = new FileReader();

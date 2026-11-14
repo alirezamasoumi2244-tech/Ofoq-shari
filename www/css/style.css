@@ -251,3 +251,49 @@ body.elder .ov-clock{font-size:3rem}
 body.elder .ov-btn{min-height:62px;font-size:1.12rem}
 
 body.hc{--text:#fff;--muted:rgba(255,255,255,.88);--line:rgba(255,255,255,.28)}
+
+/* —— Menu redesign v1.8 —— */
+.menu-grid{
+  display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:16px;
+}
+.menu-tile{
+  display:flex;flex-direction:column;align-items:flex-start;gap:10px;
+  padding:16px 14px;min-height:96px;border-radius:18px;
+  background:var(--card);border:1px solid var(--line);text-align:right;
+}
+.menu-tile i{color:var(--amber);line-height:0}
+.menu-tile .ic{width:24px;height:24px}
+.menu-tile b{display:block;font-size:.92rem;font-weight:700}
+.menu-tile small{display:block;color:var(--muted);font-size:.72rem;line-height:1.4;margin-top:2px}
+.menu-modern .mi{
+  display:flex;align-items:center;gap:0;padding:0;overflow:hidden;
+}
+.menu-modern .mi-main{
+  flex:1;display:flex;align-items:center;justify-content:space-between;
+  padding:14px 12px 14px 16px;text-align:right;min-width:0;
+}
+.menu-modern .mi-main span{display:flex;flex-direction:column;gap:2px}
+.fav-btn{
+  width:44px;height:100%;min-height:52px;border:0;border-right:1px solid var(--line);
+  background:transparent;color:var(--muted);font-size:1.1rem;flex-shrink:0;
+}
+.fav-btn.on{color:var(--amber)}
+.fav-row{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px}
+.fav-row .chip{
+  padding:8px 14px;border-radius:999px;background:var(--card);border:1px solid var(--line);
+  font-size:.85rem;font-weight:600;color:var(--text);
+}
+.fav-row .chip.on{background:var(--amber-soft);border-color:var(--amber);color:var(--amber)}
+.section-label{font-size:.75rem;font-weight:700;color:var(--muted);margin:14px 0 8px;letter-spacing:.03em}
+.prog-wrap{margin:10px 0 14px;padding:10px 12px;border-radius:14px;background:var(--card);border:1px solid var(--line)}
+.prog-bar{height:8px;border-radius:999px;background:linear-gradient(90deg,var(--amber2),var(--amber));width:0%;transition:width .6s linear}
+.prog-wrap::before{content:'';display:block;height:8px;border-radius:999px;background:rgba(255,255,255,.08);margin-bottom:-8px}
+.prog-lbl{font-size:.75rem;color:var(--muted);margin-top:8px;text-align:center}
+.menu .mi{border-radius:16px;padding:15px 16px}
+.menu .mi b{font-size:.98rem}
+.list .row{padding:15px 16px}
+.card{border-radius:20px}
+.qibla-stage{width:220px;height:220px}
+.qibla-arrow{border-left-width:24px;border-right-width:24px;border-bottom-width:120px}
+body.elder .menu-grid{grid-template-columns:1fr}
+body.elder .menu-tile{min-height:110px;padding:20px}

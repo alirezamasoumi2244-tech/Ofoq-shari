@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/wgt_c_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:gravity="center"
+    android:padding="8dp"
+    android:background="#E60F1419">
+
+    <TextView
+        android:id="@+id/wgt_c_name"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="اذان"
+        android:textColor="#99EEF4FA"
+        android:textSize="11sp"
+        android:gravity="center"
+        android:textDirection="rtl" />
+
+    <TextView
+        android:id="@+id/wgt_c_time"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="--:--"
+        android:textColor="#FF3DD6C3"
+        android:textSize="22sp"
+        android:textStyle="bold"
+        android:gravity="center"
+        android:textDirection="ltr"
+        android:paddingTop="2dp" />
+</LinearLayout>
