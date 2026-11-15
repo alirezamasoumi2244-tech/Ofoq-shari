@@ -130,7 +130,27 @@ class AzanPlugin : Plugin() {
     fun state(call: PluginCall) {
         call.resolve(JSObject()
             .put("playing", AzanService.playing).put("muted", AzanService.muted)
-            .put("name", AzanService.name).put("startedAt", AzanService.startedAt))
+            .put("name", AzanService.name).put("startedAt", AzanService.startedAt)
+            .put("dur", AzanService.duration).put("pos", if (AzanService.playing) AzanService.position() else 0)
+            .put("volume", AzanService.volume.toDouble()))
+    }
+
+    /** Change the volume of the azan that is playing right now (0.05 – 1.0). */
+    @PluginMethod
+    fun volume(call: PluginCall) {
+        val v = (call.getFloat("v") ?: 1f).coerceIn(0.05f, 1f)
+        try { context.startService(Intent(context, AzanService::class.java).setAction(AzanService.ACTION_VOLUME).putExtra("v", v)) } catch (_: Exception) {}
+        call.resolve()
+    }
+
+    /** Native vibration. pattern = "30" or "60,70,60" (vibrate, pause, vibrate … in ms). */
+    @PluginMethod
+    fun vibrate(call: PluginCall) {
+        val raw = call.getString("pattern") ?: "30"
+        val pat = raw.split(",").mapNotNull { it.trim().toLongOrNull() }.toLongArray()
+        val has = AzanCore.vibrator(context)?.hasVibrator() == true
+        val ok = if (has) AzanCore.vibrate(context, pat) else false
+        call.resolve(JSObject().put("ok", ok).put("has", has))
     }
 
     @PluginMethod

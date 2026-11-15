@@ -115,7 +115,12 @@
       if (url) window.open(url, '_blank', 'noopener,noreferrer');
       return {};
     },
-    state: async () => ({ playing: !!audio || Date.now() < chimeUntil, muted, name: curName, startedAt }),
+    state: async () => ({ playing: !!audio || Date.now() < chimeUntil, muted, name: curName, startedAt,
+      dur: audio && isFinite(audio.duration) ? Math.round(audio.duration * 1000) : 0,
+      pos: audio ? Math.round(audio.currentTime * 1000) : 0,
+      volume: audio ? audio.volume : (cfg.volume || 1) }),
+    volume: async v => { if (audio) audio.volume = Math.min(1, Math.max(0.05, +v || 1)); return {}; },
+    vibrate: async pat => { try { if (navigator.vibrate) return { ok: navigator.vibrate([].concat(pat)), has: true }; } catch (e) {} return { ok: false, has: false }; },
     mute: async on => {
       muted = !!on;
       if (audio) audio.muted = muted;

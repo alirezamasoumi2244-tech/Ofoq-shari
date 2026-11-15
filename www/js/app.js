@@ -42,7 +42,7 @@
   const DEF = {
     cityId: 'tehran', custom: null,
     enabled: { fajr: true, dhuhr: true, asr: false, maghrib: true, isha: false },
-    volume: 1, pre: 0, offsets: {}, muezzinId: 'afasy', hijriOffset: 0,
+    volume: 1, pre: 0, offsets: {}, muezzinId: 'afasy', hijriOffset: 1, // +1: islamic-civil often 1 day behind Iranian visual calendar
     muezzins: [{ id: 'afasy', name: 'اذان پیش‌فرض', path: '', file: '' }],
     setupDone: false,
     method: 'tehran',
@@ -54,7 +54,9 @@
     qada: { fajr: 0, dhuhr: 0, asr: 0, maghrib: 0, isha: 0, fast: 0 },
     dhikrCount: 0, dhikrTarget: 33, dhikrName: 'سبحان الله',
     notes: {},               // 'YYYY-M-D' -> text
-    vibrateQibla: true,
+    vibrateQibla: true,      // master switch for all vibration (name kept for old backups)
+    vibrateAzan: false,      // gentle vibration when the azan starts
+    dhikrAwake: true,        // keep the screen on in the tasbih page
     showImsak: true,
     showMidnight: true,
     ramadanMode: false,
@@ -65,9 +67,32 @@
     useMagDecl: true,        // compensate magnetic declination
     favCities: ['tehran'],   // quick favorites
     showProgress: true,      // prayer progress bar
-    preciseCd: true          // countdown with seconds emphasis
+    preciseCd: true,         // countdown with seconds emphasis
+    prayedToday: {},         // { fajr: true, ... } marked as prayed today
+    prayedDate: '',          // 'YYYY-M-D' for prayedToday validity
+    reduceMotion: false,     // less animation
+    showSeconds: true,       // show seconds in countdown
+    autoCity: true,          // suggest nearest city on GPS
+    stickyNext: true,        // keep next prayer visible on home
+    dailyGoal: true,         // encourage marking prayers
+    hapticHome: true,        // light haptic on home actions
+    showKaabaDist: true,     // distance to Mecca in qibla
+    weekStart: 'sat',        // calendar week start
+    notifyOnPrayed: false,   // optional feedback when marking prayed
+    compactHome: false,      // denser home layout
+    highlightFriday: true,   // special Friday treatment
+    showNextOcc: true,       // show upcoming occasions
+    smartNotif: true,        // rich pre-azan notifications
+    quietHours: false,       // suppress pre-notif at night (except fajr)
+    quietStart: 23,
+    quietEnd: 5,
+    ramadanHint: true,       // extra maghrib text in Ramadan mode
+    preEnabled: { fajr: true, dhuhr: true, asr: true, maghrib: true, isha: true },
+    preFajr: null,           // null = use global pre; else minutes only for fajr
+    vibratePre: true,        // vibrate on pre-azan notification
+    preOnlyEnabledAzan: true // only pre-notify for azans that are enabled
   };
-  const APP_VERSION = '1.8.4';
+  const APP_VERSION = '1.9.0';
   const METHOD_LABELS = {
     tehran: 'مؤسسه ژئوفیزیک تهران',
     mwl: 'لیگ جهانی مسلمانان',
@@ -80,6 +105,28 @@
   const fa = s => String(s).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
   const p2 = n => String(n).padStart(2, '0');
   const hm = min => fa(p2(Math.floor(min / 60) % 24) + ':' + p2(min % 60));
+  /* ---------- vibration: native Android first (the WebView's navigator.vibrate is unreliable), browser API as fallback ---------- */
+  const VIB = { tap: [28], done: [70, 70, 70, 70, 180], qibla: [40, 30, 40], rakat: [40], test: [180, 90, 180] };
+  async function vib(kind, force) {
+    if (!force && !S.vibrateQibla) return null;
+    const pat = VIB[kind] || VIB.tap;
+    let r = null;
+    try { r = await Native.vibrate(pat); } catch (e) { r = null; }
+
+    // Some Android devices report that the native vibrator exists but the
+    // request is not performed. In that case, try the WebView vibration API
+    // too instead of treating { ok: false } as a completed request.
+    if (!r || r.error || r.ok !== true) {
+      try {
+        if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
+          const webOk = navigator.vibrate(pat);
+          if (webOk) return { ok: true, has: true, source: 'web' };
+        }
+      } catch (e) {}
+    }
+    if (r && r.ok === true) return r;
+    return { ok: false, has: !!(r && r.has), native: r || null };
+  }
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   let S = load();
@@ -95,6 +142,12 @@
       if (![0.9, 1, 1.15, 1.3].includes(m.fontScale)) m.fontScale = 1;
       if (m.uiMode !== 'elder') m.uiMode = 'normal';
       if (!['system', 'light', 'dark'].includes(m.themeMode)) m.themeMode = 'system';
+      // One-time fix: islamic-civil was typically 1 day behind Iranian announced Hijri
+      if (!m.hijriCalFixed) {
+        if (o.hijriOffset === undefined || o.hijriOffset === 0) m.hijriOffset = 1;
+        m.hijriCalFixed = true;
+      }
+      if (!m.preEnabled) m.preEnabled = { fajr: true, dhuhr: true, asr: true, maghrib: true, isha: true };
       return m;
     } catch (e) { return JSON.parse(JSON.stringify(DEF)); }
   }
@@ -146,6 +199,16 @@
     const effectiveMode = S.themeMode === 'system' ? (systemDark ? 'dark' : 'light') : (S.themeMode || 'system');
     document.body.dataset.mode = effectiveMode;
     document.body.classList.toggle('amoled', !!S.amoled && effectiveMode === 'dark');
+    document.body.classList.toggle('reduce-motion', !!S.reduceMotion);
+    document.body.classList.toggle('compact', !!S.compactHome);
+    // Friday class for special styling
+    try {
+      const p = place();
+      const cnow = cityNow(p.tz);
+      const wd = new Date(cnow.getTime()).getUTCDay(); // 0=Sun ... 5=Fri
+      // JS UTC day: need local-ish; cityNow shifts so getUTCDay reflects city
+      document.body.classList.toggle('friday', wd === 5 && S.highlightFriday !== false);
+    } catch (e) {}
     // elder has its own scale in CSS; normal uses fontScale
     document.documentElement.style.setProperty('--fs', elder ? 1 : (S.fontScale || 1));
     const meta = document.querySelector('meta[name="theme-color"]');
@@ -174,28 +237,106 @@
     const c = cityNow(p.tz);
     const fmt = (loc, o, d) => new Intl.DateTimeFormat(loc, Object.assign({ timeZone: 'UTC' }, o)).format(d);
     const shamsi = fmt('fa-IR-u-ca-persian', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }, c);
-    const h = new Date(c.getTime() + (S.hijriOffset || 0) * 86400000);
-    const qamari = fmt('fa-IR-u-ca-islamic-civil', { day: 'numeric', month: 'long', year: 'numeric' }, h);
+    // Hijri: islamic-civil is tabular and often 1 day behind common Iranian/announced dates.
+    // Default offset +1; user can fine-tune in settings. Umm al-Qura used when available.
+    const h = new Date(c.getTime() + (S.hijriOffset != null ? S.hijriOffset : 1) * 86400000);
+    let qamari, lp;
+    try {
+      qamari = fmt('fa-IR-u-ca-islamic-umalqura', { day: 'numeric', month: 'long', year: 'numeric' }, h);
+      lp = new Intl.DateTimeFormat('en-US-u-ca-islamic-umalqura', { timeZone: 'UTC', month: 'numeric', day: 'numeric' }).formatToParts(h);
+    } catch (e) {
+      qamari = fmt('fa-IR-u-ca-islamic-civil', { day: 'numeric', month: 'long', year: 'numeric' }, h);
+      lp = new Intl.DateTimeFormat('en-US-u-ca-islamic-civil', { timeZone: 'UTC', month: 'numeric', day: 'numeric' }).formatToParts(h);
+    }
     const greg = fmt('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }, c);
-    // numeric parts for occasions
     const sp = new Intl.DateTimeFormat('en-US-u-ca-persian', { timeZone: 'UTC', month: 'numeric', day: 'numeric' }).formatToParts(c);
-    const lp = new Intl.DateTimeFormat('en-US-u-ca-islamic-civil', { timeZone: 'UTC', month: 'numeric', day: 'numeric' }).formatToParts(h);
     const get = (parts, type) => (parts.find(x => x.type === type) || {}).value;
     const shamsiMD = get(sp, 'month') + '/' + get(sp, 'day');
     const lunarMD = get(lp, 'month') + '/' + get(lp, 'day');
     return { shamsi, qamari, greg, shamsiMD, lunarMD };
   }
 
+
+  /* ---------- prayer completion & daily helpers ---------- */
+  function todayKey(p) {
+    const c = cityNow(p ? p.tz : place().tz);
+    return c.getUTCFullYear() + '-' + (c.getUTCMonth() + 1) + '-' + c.getUTCDate();
+  }
+  function ensurePrayedDay() {
+    const k = todayKey();
+    if (S.prayedDate !== k) {
+      S.prayedToday = {};
+      S.prayedDate = k;
+    }
+  }
+  function isPrayed(key) {
+    ensurePrayedDay();
+    return !!(S.prayedToday && S.prayedToday[key]);
+  }
+  function togglePrayed(key) {
+    ensurePrayedDay();
+    if (!S.prayedToday) S.prayedToday = {};
+    S.prayedToday[key] = !S.prayedToday[key];
+    // simple streak: if all 5 azan prayers marked, advance streak
+    const all = AZAN.every(k => S.prayedToday[k]);
+    if (all) {
+      const k = todayKey();
+      if (S.streak.last !== k) {
+        S.streak.days = (S.streak.days || 0) + 1;
+        S.streak.last = k;
+      }
+    }
+    save(false);
+    if (S.hapticHome !== false) vib('tap');
+    return S.prayedToday[key];
+  }
+  function prayedCount() {
+    ensurePrayedDay();
+    return AZAN.filter(k => S.prayedToday[k]).length;
+  }
+  function kaabaDistanceKm(lat, lng) {
+    // Haversine to Kaaba approx 21.4225, 39.8262
+    const R = 6371, toR = Math.PI / 180;
+    const dLat = (21.4225 - lat) * toR, dLng = (39.8262 - lng) * toR;
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat*toR)*Math.cos(21.4225*toR)*Math.sin(dLng/2)**2;
+    return Math.round(2 * R * Math.asin(Math.sqrt(a)));
+  }
+  function shareTextTimes() {
+    const p = place(), t = timesFor(dayStart(p, 0), p), d = dates(p);
+    let s = 'اوقات شرعی ' + p.name + '\n' + d.shamsi + '\n' + d.qamari + '\n\n';
+    PRAYERS.forEach(([k, n]) => { s += n + ': ' + hm(t[k].min) + '\n'; });
+    if (t.imsak) s += 'امساک: ' + hm(t.imsak.min) + '\n';
+    s += '\n— افق شرعی';
+    return s;
+  }
+  function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).then(() => true).catch(() => false);
+    }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      const ok = document.execCommand('copy'); document.body.removeChild(ta);
+      return Promise.resolve(ok);
+    } catch (e) { return Promise.resolve(false); }
+  }
+
   /* ---------- scheduling (hands a 45-day event list to Kotlin) ---------- */
   function buildEvents() {
     const p = place(), out = [], now = Date.now();
+    const preEn = S.preEnabled || {};
     for (let i = 0; i < 45; i++) {
       const t = timesFor(dayStart(p, i), p);
       for (const k of AZAN) {
         if (!S.enabled[k]) continue;
         const ms = t[k].ms;
         if (ms < now - 120000) continue;
-        if (S.pre > 0 && ms - S.pre * 60000 > now) out.push({ t: ms - S.pre * 60000, type: 'pre', key: k, name: SHORT[k], min: S.pre });
+        // Advanced pre: global minutes, optional different Fajr minutes, per-prayer toggle
+        let preMin = S.pre || 0;
+        if (k === 'fajr' && S.preFajr != null && S.preFajr !== '') preMin = parseInt(S.preFajr, 10) || 0;
+        const preOn = preMin > 0 && (preEn[k] !== false);
+        if (preOn && ms - preMin * 60000 > now)
+          out.push({ t: ms - preMin * 60000, type: 'pre', key: k, name: SHORT[k], min: preMin });
         out.push({ t: ms, type: 'azan', key: k, name: SHORT[k] });
       }
     }
@@ -206,15 +347,29 @@
     if (!Native.available()) return;
     const p = place();
     const tms = timesFor(dayStart(p, 0), p);
+    const d = dates(p);
     const today = {};
     PRAYERS.forEach(([k]) => { today[k] = hm(tms[k].min); });
     if (tms.imsak) today.imsak = hm(tms.imsak.min);
+    const occ = (typeof CONTENT !== 'undefined' && CONTENT.occFor) ? CONTENT.occFor(d.shamsiMD, d.lunarMD) : [];
     Native.schedule(buildEvents(), {
       path: muezzin().path || '',
       volume: S.volume,
       city: p.name,
       today: today,
-      method: S.method || 'tehran'
+      method: S.method || 'tehran',
+      vibrate: !!S.vibrateAzan,
+      shamsi: d.shamsi,
+      qamari: d.qamari,
+      shamsiMD: d.shamsiMD,
+      lunarMD: d.lunarMD,
+      occasions: occ.map(o => o.text).slice(0, 3),
+      smartNotif: S.smartNotif !== false,
+      quietHours: !!S.quietHours,
+      quietStart: S.quietStart || 23,
+      quietEnd: S.quietEnd || 5,
+      ramadanHint: !!(S.ramadanMode && S.ramadanHint !== false),
+      vibratePre: S.vibratePre !== false
     });
   }
 
@@ -230,8 +385,17 @@
   let stack = ['home'];
   function show(pg) {
     if (page === 'qibla' && pg !== 'qibla') stopQiblaCompass();
-    page = pg; cal.first = null; render(); window.scrollTo(0, 0);
+    page = pg; cal.first = null; render(); window.scrollTo(0, 0); syncAwake(pg);
     if (app.classList) { app.classList.remove('enter'); void app.offsetWidth; app.classList.add('enter'); }
+  }
+  /* screen stays on only in the tasbih / rak'at pages (never while the azan screen manages it itself) */
+  let pageAwake = false;
+  function syncAwake(pg) {
+    const want = (pg === 'dhikr' && S.dhikrAwake !== false) || pg === 'rakat';
+    if (want === pageAwake) return;
+    pageAwake = want;
+    if (!want && typeof ov !== 'undefined' && !ov.hidden) return;
+    Native.keepAwake(want);
   }
   function go(pg) {
     if (pg === page) return show(pg);
@@ -296,7 +460,9 @@
     for (let i = 0; i < len; i++) {
       const ms = first + i * DAYMS, hp = parts(_fH, ms + off), wd = new Date(ms).getUTCDay();
       const oc = occOf({ month: sp0.month, day: i + 1 }, hp);
-      cells += '<button class="cday' + (wd === 5 ? ' fri' : '') + (oc.length ? ' occ' : '') + (ms === today ? ' today' : '') + (ms === cal.sel ? ' sel' : '') + '" data-cal-day="' + ms + '">' +
+      const isHol = oc.some(o => o.holiday);
+      const isFri = wd === 5;
+      cells += '<button class="cday' + (isFri ? ' fri' : '') + (oc.length ? ' occ' : '') + (isHol ? ' hol' : '') + (ms === today ? ' today' : '') + (ms === cal.sel ? ' sel' : '') + '" data-cal-day="' + ms + '">' +
         '<b>' + fa(i + 1) + '</b><small><span>' + new Date(ms).getUTCDate() + '</span><span>' + fa(hp.day) + '</span></small></button>';
     }
     const sel = cal.sel, sp = parts(_fP, sel), hs = parts(_fH, sel + off), oc = occOf(sp, hs);
@@ -305,9 +471,9 @@
       '<div class="t"><b>' + SH_M[sp0.month - 1] + ' ' + fa(sp0.year) + '</b><small>' + esc(hSub) + ' · <span dir="ltr">' + esc(gSub) + '</span></small></div>' +
       '<button class="cal-nav" data-cal-nav="1" aria-label="ماه بعد">' + ic('chev') + '</button></div>' +
       '<div class="cal-g">' + WK.map((w, i) => '<span class="cal-w' + (i === 6 ? ' fri' : '') + '">' + w + '</span>').join('') + cells + '</div>' +
-      '<p class="hint cal-leg">اعداد کوچک هر روز: میلادی (چپ) · قمری (راست)</p>' +
+      '<p class="hint cal-leg">اعداد کوچک: میلادی · قمری · <span class="leg-hol">تعطیل</span> · <span class="leg-fri">جمعه</span></p>' +
       '<div class="cal-d"><b>' + esc(a.shamsi) + '</b><div>' + esc(q) + '</div><div dir="ltr" style="text-align:right">' + esc(a.gregEn) + '</div>' +
-      (oc.length ? '<div>' + oc.map(o => '<span class="chip">' + esc(o.text) + '</span>').join('') + '</div>' : '') + '</div>' +
+      (oc.length ? '<div>' + oc.map(o => '<span class="chip' + (o.holiday ? ' chip-hol' : '') + '">' + (o.holiday ? 'تعطیل · ' : '') + esc(o.text) + '</span>').join('') + '</div>' : '') + '</div>' +
       ((monthFirst(today) !== first || sel !== today) ? '<button class="btn alt wide" data-cal-today="1" style="margin-top:10px">برگشت به امروز</button>' : '');
   }
   function refreshCal() { const h = document.getElementById('calHost'); if (h) h.innerHTML = calHtml(); }
@@ -336,9 +502,15 @@
     const extra = [];
     if (S.showImsak && tms.imsak) extra.push(['امساک', tms.imsak.min]);
     if (S.showMidnight && tms.midnight) extra.push(['نیمه‌شب شرعی', tms.midnight.min]);
-    const rows = PRAYERS.map(([k]) =>
-      '<div class="trow' + (nx && nx.key === k ? ' on' : (tms[k].ms <= now ? ' past' : '')) + '"><i>' + ICON[k] + '</i><span>' + SHORT[k] + '</span><b>' + hm(tms[k].min) + '</b></div>'
-    ).join('') + extra.map(([n, min]) => '<div class="trow dim"><span>' + n + '</span><b>' + hm(min) + '</b></div>').join('');
+    ensurePrayedDay();
+    const pc = prayedCount();
+    const rows = PRAYERS.map(([k]) => {
+      const done = isPrayed(k);
+      const cls = (nx && nx.key === k ? ' on' : (tms[k].ms <= now ? ' past' : '')) + (done ? ' done' : '');
+      const check = AZAN.includes(k) ? '<button class="pray-check' + (done ? ' on' : '') + '" data-pray="' + k + '" aria-label="علامت نماز">' + (done ? '✓' : '○') + '</button>' : '';
+      return '<div class="trow' + cls + '"><i>' + ICON[k] + '</i><span>' + SHORT[k] + '</span>' + check + '<b>' + hm(tms[k].min) + '</b></div>';
+    }).join('') + extra.map(([n, min]) => '<div class="trow dim"><span>' + n + '</span><b>' + hm(min) + '</b></div>').join('');
+    const goalHtml = S.dailyGoal !== false ? '<div class="goal-bar"><span>امروز ' + fa(pc) + ' از ۵ نماز</span><div class="goal-track"><div class="goal-fill" style="width:' + (pc*20) + '%"></div></div></div>' : '';
     const q = (id, icn, t, main) => '<button class="qbtn' + (main ? ' main' : '') + '"' + (id === 'namazMode' ? ' id="namazMode"' : ' onclick="go(\'' + id + '\')"') + '><i>' + icn + '</i><span>' + t + '</span></button>';
     app.innerHTML =
       '<header class="hbar">' +
@@ -355,9 +527,35 @@
         (S.showProgress !== false ? '<div class="prog-wrap"><div class="prog-bar" id="progBar"></div><div class="prog-lbl" id="progLbl"></div></div>' : '') +
       '</section>' +
       '<div class="qrow">' + q('namazMode', ic('check'), 'نماز', true) + q('dhikr', ic('moon'), 'ذکر') + q('duas', ic('mic'), 'ادعیه') + q('week', ic('clock'), 'اوقات هفته') + '</div>' +
+      goalHtml +
       '<h2>اوقات امروز</h2><section class="tlist">' + rows + '</section>' +
+      '<div class="quick home-actions"><button class="btn alt" id="copyTimes">کپی اوقات</button><button class="btn alt" id="shareTimesHome">اشتراک</button></div>' +
       '<h2>تقویم</h2><section class="card cal" id="calHost">' + calHtml() + '</section>';
     tick();
+    // bind prayer checks
+    app.querySelectorAll('[data-pray]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const k = btn.getAttribute('data-pray');
+        const on = togglePrayed(k);
+        btn.classList.toggle('on', on);
+        btn.textContent = on ? '✓' : '○';
+        const row = btn.closest('.trow');
+        if (row) row.classList.toggle('done', on);
+        const fill = document.querySelector('.goal-fill');
+        const label = document.querySelector('.goal-bar span');
+        if (fill) fill.style.width = (prayedCount()*20) + '%';
+        if (label) label.textContent = 'امروز ' + fa(prayedCount()) + ' از ۵ نماز';
+      });
+    });
+    const ct = document.getElementById('copyTimes');
+    if (ct) ct.onclick = () => copyToClipboard(shareTextTimes()).then(ok => { if (ok) { ct.textContent = 'کپی شد ✓'; setTimeout(() => ct.textContent = 'کپی اوقات', 1500); } });
+    const sh = document.getElementById('shareTimesHome');
+    if (sh) sh.onclick = () => {
+      const text = shareTextTimes();
+      if (navigator.share) navigator.share({ text }).catch(() => copyToClipboard(text));
+      else copyToClipboard(text).then(() => { sh.textContent = 'کپی شد'; setTimeout(() => sh.textContent = 'اشتراک', 1500); });
+    };
   }
   function renderTimes() {
     const p = place(), t = timesFor(dayStart(p, 0), p), t2 = timesFor(dayStart(p, 1), p);
@@ -386,7 +584,7 @@
       ['اطلاعات', [
         ['backup', 'save', 'پشتیبان‌گیری', 'خروجی و بازیابی'],
         ['privacy', 'shield', 'حریم خصوصی', 'بدون ارسال داده'],
-        ['about', 'info', 'درباره برنامه', 'نسخه ' + fa(APP_VERSION)]]]
+        ['about', 'info', 'درباره برنامه', 'معرفی و راهنما']]]
     ];
     app.innerHTML = header('تنظیمات', 'home') + G.map(([t, rows]) =>
       '<div class="sgroup-t">' + t + '</div><section class="sgroup">' +
@@ -432,6 +630,7 @@
   function renderAzan() {
     app.innerHTML = header('تنظیمات اذان', 'settings') +
       '<section class="menu">' + AZAN.map(k => '<div class="mi"><span><b>' + NAME[k] + '</b><small>پخش خودکار</small></span>' + toggle(k, S.enabled[k]) + '</div>').join('') + '</section>' +
+      '<section class="menu"><div class="mi"><span><b>ویبره هنگام شروع اذان</b><small>یک لرزش ملایم همراه با اذان</small></span><button class="sw' + (S.vibrateAzan ? ' on' : '') + '" data-vibazan="1"></button></div></section>' +
       '<section class="form"><label>میزان صدا: <b id="volV">' + fa(Math.round(S.volume * 100)) + '٪</b><input id="vol" type="range" min="10" max="100" value="' + Math.round(S.volume * 100) + '"></label>' +
       '<button class="btn" id="tPlay">' + ic('play') + ' آزمایش صدای اذان</button><button class="btn alt" id="tStop">' + ic('stop') + ' توقف صدا</button><div id="aMsg" class="hint"></div></section>' +
       '<h2>اصلاح دقیقه اوقات</h2><p class="hint">اگر اوقات شهر شما با تقویم رسمی چند دقیقه فرق داشت، همین‌جا هر وقت را کم یا زیاد کنید. اذان و شمارش معکوس هم با همین اصلاح انجام می‌شود.</p><section class="list">' +
@@ -446,12 +645,35 @@
       '<button class="btn wide" id="mAdd">' + ic('plus') + ' افزودن مؤذن دلخواه</button><button class="btn alt wide" id="mStop">' + ic('stop') + ' توقف صدا</button><div id="mMsg" class="hint"></div>';
   }
   function renderNotif() {
+    const preEn = S.preEnabled || {};
+    const preFajrVal = (S.preFajr == null || S.preFajr === '') ? '' : String(S.preFajr);
     app.innerHTML = header('اعلان‌ها', 'settings') +
-      '<section class="form"><label>یادآوری قبل از اذان<select id="pre">' +
-      [0, 5, 10, 15, 20, 30].map(v => '<option value="' + v + '"' + (S.pre === v ? ' selected' : '') + '>' + (v ? fa(v) + ' دقیقه قبل' : 'خاموش') + '</option>').join('') + '</select></label>' +
+      '<h2>یادآوری قبل از اذان</h2>' +
+      '<section class="form"><label>زمان پیش‌فرض<select id="pre">' +
+      [0, 5, 10, 15, 20, 30, 45, 60].map(v => '<option value="' + v + '"' + (S.pre === v ? ' selected' : '') + '>' + (v ? fa(v) + ' دقیقه قبل' : 'خاموش') + '</option>').join('') + '</select></label>' +
+      '<label>فقط برای اذان صبح (اختیاری)<select id="preFajr">' +
+      '<option value=""' + (preFajrVal === '' ? ' selected' : '') + '>همان پیش‌فرض</option>' +
+      [5, 10, 15, 20, 30, 45, 60].map(v => '<option value="' + v + '"' + (preFajrVal === String(v) ? ' selected' : '') + '>' + fa(v) + ' دقیقه قبل</option>').join('') +
+      '</select></label></section>' +
+      '<h2>یادآوری برای هر وقت</h2><section class="menu">' +
+      AZAN.map(k => '<div class="mi"><span><b>' + NAME[k] + '</b><small>یادآوری قبل از این اذان</small></span><button class="sw' + (preEn[k] !== false ? ' on' : '') + '" data-preen="' + k + '"></button></div>').join('') +
+      '</section>' +
+      '<h2>اعلان هوشمند</h2><section class="menu">' +
+        '<div class="mi"><span><b>اعلان هوشمند</b><small>شهر، ساعت اذان و متن مناسب هر وقت</small></span><button class="sw' + (S.smartNotif !== false ? ' on' : '') + '" data-smartn="1"></button></div>' +
+        '<div class="mi"><span><b>ویبره یادآوری</b><small>لرزش هنگام اعلان قبل از اذان</small></span><button class="sw' + (S.vibratePre !== false ? ' on' : '') + '" data-vibpre="1"></button></div>' +
+        '<div class="mi"><span><b>ساعات سکوت شب</b><small>یادآوری غیرصبح در شب قطع شود</small></span><button class="sw' + (S.quietHours ? ' on' : '') + '" data-quiet="1"></button></div>' +
+        '<div class="mi"><span><b>راهنمای رمضان</b><small>متن اضافه برای مغرب</small></span><button class="sw' + (S.ramadanHint !== false ? ' on' : '') + '" data-ramhint="1"></button></div>' +
+      '</section>' +
+      (S.quietHours ? '<section class="form"><label>شروع سکوت<select id="qStart">' +
+        Array.from({length:24},(_,h)=>'<option value="'+h+'"'+((S.quietStart||23)===h?' selected':'')+'>'+fa(h)+'</option>').join('') +
+        '</select></label><label>پایان سکوت<select id="qEnd">' +
+        Array.from({length:24},(_,h)=>'<option value="'+h+'"'+((S.quietEnd||5)===h?' selected':'')+'>'+fa(h)+'</option>').join('') +
+        '</select></label></section>' : '') +
+      '<h2>مجوزها و باتری</h2><section class="form">' +
       '<div id="st" class="hint">در حال بررسی وضعیت…</div>' +
       '<button class="btn" id="nAsk">اجازه نمایش اعلان</button><button class="btn" id="nBat">خارج کردن از محدودیت باتری</button><button class="btn alt" id="nApp">تنظیمات برنامه در اندروید</button></section>' +
-      '<p class="hint">در گوشی‌های سامسونگ، شیائومی، هواوی، اوپو و … علاوه بر این، گزینه‌های «شروع خودکار / Autostart» و «بدون محدودیت باتری» را برای افق شرعی فعال کنید. اگر برنامه را از «توقف اجباری (Force Stop)» ببندید، اندروید تا باز شدن دوباره برنامه اجازه اجرای هیچ زمان‌بندی را نمی‌دهد.</p>';
+      '<p class="hint">اعلان هوشمند متن کامل‌تری نشان می‌دهد. ساعات سکوت فقط یادآوری قبل از اذان را محدود می‌کند؛ خودِ اذان همیشه پخش می‌شود. برای هر وقت می‌توانید یادآوری را جدا خاموش کنید.</p>' +
+      '<p class="hint">در سامسونگ، شیائومی، هواوی و اوپو گزینه «شروع خودکار» و «بدون محدودیت باتری» را فعال کنید.</p>';
     Native.status().then(s => {
       const el = document.getElementById('st'); if (!el) return;
       if (!s) { el.textContent = 'این صفحه فقط روی گوشی وضعیت را نشان می‌دهد.'; return; }
@@ -462,7 +684,7 @@
   function renderAbout() {
     app.innerHTML = header('درباره برنامه', 'settings') +
       '<section class="card"><h3>افق شرعی</h3>' +
-      '<p><b>نسخه ' + fa(APP_VERSION) + '</b> · آخرین به‌روزرسانی: آبان ۱۴۰۵</p>' +
+      '' +
       '<p>افق شرعی یک برنامه کاملاً فارسی و راست‌چین برای نمایش اوقات شرعی، پخش اذان، قبله‌نما و ابزارهای عبادی است. رابط کاربری بزرگ، ساده و مناسب سالمندان طراحی شده تا همه بتوانند به راحتی از آن استفاده کنند.</p>' +
       '<p>روش پیش‌فرض محاسبه اوقات، <b>مؤسسه ژئوفیزیک دانشگاه تهران</b> است که برای شهرهای ایران دقیق‌ترین نتیجه را می‌دهد. در تنظیمات می‌توانید روش‌های دیگر (MWL، ISNA، مصر، کراچی، ام‌القرى، جعفری و …) را انتخاب کنید.</p>' +
       '<p class="hint">اوقات محاسبه‌شده را حتماً با تقویم رسمی یا اعلام محلی شهر خود مقایسه کنید. اختلاف ۱ تا ۳ دقیقه‌ای به‌خاطر ارتفاع، افق و روش محاسبه کاملاً طبیعی است. از بخش «اصلاح دقیقه» در تنظیمات اذان می‌توانید هر وقت را جداگانه جلو یا عقب ببرید.</p>' +
@@ -477,7 +699,7 @@
       '<li>ویجت صفحه اصلی، پشتیبان‌گیری و حالت رمضان</li>' +
       '</ul>' +
       '<p class="hint">برنامه کاملاً آفلاین کار می‌کند و هیچ داده‌ای به سرور ارسال نمی‌شود. همه تنظیمات و اطلاعات فقط روی گوشی شما ذخیره می‌گردند.</p>' +
-      '<div class="form"><label>اصلاح تاریخ قمری<select id="hj">' + [-2, -1, 0, 1, 2].map(v => '<option value="' + v + '"' + (S.hijriOffset === v ? ' selected' : '') + '>' + (v > 0 ? '+' : '') + fa(v) + ' روز</option>').join('') + '</select></label></div></section>' +
+      '<div class="form"><label>اصلاح تاریخ قمری (اگر یک روز عقب/جلو است)<select id="hj">' + [-3,-2,-1,0,1,2,3].map(v => '<option value="' + v + '"' + ((S.hijriOffset != null ? S.hijriOffset : 1) === v ? ' selected' : '') + '>' + (v > 0 ? '+' : '') + fa(v) + ' روز' + (v === 1 ? ' (پیشنهادی)' : '') + '</option>').join('') + '</select></label><p class="hint">تقویم قمری جدولی گاهی یک روز با اعلام رسمی فرق دارد. پیش‌فرض +۱ روز است.</p></div></section>' +
       '<section class="card"><h3>ما را دنبال کنید</h3>' +
       '<p class="hint" style="margin:0 0 10px">با دنبال کردن صفحهٔ ما در گیت‌هاب، از نسخه‌های جدید زودتر باخبر می‌شوید و با ستاره‌دادن به پروژه، به بهتر شدن افق شرعی کمک می‌کنید.</p>' +
       '<button class="btn wide" id="ghOpen" type="button">⭐ دنبال کردن در گیت‌هاب</button></section>' +
@@ -554,8 +776,8 @@
         status.className = 'hint' + (aligned && flat ? ' q-ok' : '');
         const lv = document.getElementById('qLevel');
         if (lv) lv.textContent = flat ? 'تراز افقی ✓' : 'کج — صاف کنید';
-        if (aligned && flat && S.vibrateQibla && navigator.vibrate && Date.now() - lastVib > 2500) {
-          navigator.vibrate([40, 30, 40]);
+        if (aligned && flat && S.vibrateQibla && Date.now() - lastVib > 2500) {
+          vib('qibla');
           lastVib = Date.now();
         }
       }
@@ -577,7 +799,7 @@
     const p = place();
     const degTrue = PT.qibla(p.lat, p.lng);
     const degMag = PT.qiblaMagnetic ? PT.qiblaMagnetic(p.lat, p.lng) : degTrue;
-    const dist = PT.qiblaDistance ? PT.qiblaDistance(p.lat, p.lng) : null;
+    const dist = PT.qiblaDistance ? PT.qiblaDistance(p.lat, p.lng) : (S.showKaabaDist !== false ? kaabaDistanceKm(p.lat, p.lng) : null);
     const degFa = fa(Math.round(degTrue));
     const startBrng = degTrue;
     app.innerHTML = header('قبله‌نما', 'home') +
@@ -629,10 +851,15 @@
       '<section class="menu">' +
         '<div class="mi"><span><b>کنتراست بالا</b><small>متن روشن‌تر</small></span><button class="sw' + (S.highContrast ? ' on' : '') + '" data-hc="1"></button></div>' +
         '<div class="mi"><span><b>سیاه خالص (AMOLED)</b><small>صرفه‌جویی باتری</small></span><button class="sw' + (S.amoled ? ' on' : '') + '" data-amoled="1"></button></div>' +
+        '<div class="mi"><span><b>کاهش حرکت</b><small>انیمیشن کمتر برای راحتی چشم</small></span><button class="sw' + (S.reduceMotion ? ' on' : '') + '" data-rmotion="1"></button></div>' +
+        '<div class="mi"><span><b>خانه فشرده</b><small>فاصله کمتر بین بخش‌ها</small></span><button class="sw' + (S.compactHome ? ' on' : '') + '" data-compact="1"></button></div>' +
+        '<div class="mi"><span><b>هدف روزانه نماز</b><small>نوار پیشرفت ۵ نماز</small></span><button class="sw' + (S.dailyGoal !== false ? ' on' : '') + '" data-dgoal="1"></button></div>' +
+        '<div class="mi"><span><b>هایلایت جمعه</b><small>ظاهر ویژه روز جمعه</small></span><button class="sw' + (S.highlightFriday !== false ? ' on' : '') + '" data-fri="1"></button></div>' +
         '<div class="mi"><span><b>حالت رمضان</b><small>امساک و افطار برجسته</small></span><button class="sw' + (S.ramadanMode ? ' on' : '') + '" data-ramadan="1"></button></div>' +
         '<div class="mi"><span><b>نمایش امساک</b></span><button class="sw' + (S.showImsak ? ' on' : '') + '" data-imsak="1"></button></div>' +
         '<div class="mi"><span><b>نمایش نیمه‌شب شرعی</b></span><button class="sw' + (S.showMidnight ? ' on' : '') + '" data-midn="1"></button></div>' +
         '<div class="mi"><span><b>تکان برای ذکر</b></span><button class="sw' + (S.shakeDhikr ? ' on' : '') + '" data-shake="1"></button></div>' +
+        '<div class="mi"><span><b>ویبره</b><small>ذکرشمار، رکعت‌شمار و قبله‌نما</small></span><button class="sw' + (S.vibrateQibla ? ' on' : '') + '" data-vibsw="1"></button></div>' +
       '</section>';
   }
 
@@ -650,7 +877,7 @@
       '<p>موقعیت GPS فقط وقتی خودتان دکمه «موقعیت فعلی» را بزنید استفاده می‌شود و روی دستگاه می‌ماند؛ به اینترنت یا شخص ثالث فرستاده نمی‌شود.</p>' +
       '<p>اعلان‌ها و سرویس پخش اذان فقط برای عملکرد برنامه لازم هستند و هیچ آمار یا ردیابی جمع‌آوری نمی‌شود.</p>' +
       '<p>فایل‌های صوتی اذان که وارد می‌کنید فقط در حافظه خصوصی برنامه کپی می‌شوند.</p>' +
-      '<p class="hint">آخرین به‌روزرسانی: آبان ۱۴۰۵ · نسخه ' + fa(APP_VERSION) + '</p></section>';
+      '</section>';
   }
   function renderSetup() {
     const selected = place();
@@ -709,17 +936,44 @@
       items.map(([id, icn, title]) => '<button class="tbtn" onclick="go(\'' + id + '\')"><i>' + ic(icn) + '</i><span>' + title + '</span></button>').join('') + '</div>'
     ).join('');
   }
+  /* count inside the current round (دور), total and ring progress */
+  const DK_C = 653.45;
+  function dhikrState() {
+    const tg = S.dhikrTarget === 0 ? 0 : (S.dhikrTarget || 33), n = S.dhikrCount || 0;
+    if (!tg) return { tg, n, cur: n, round: 0, frac: 0 };
+    const round = Math.max(1, Math.ceil(n / tg));
+    const cur = n === 0 ? 0 : n - (round - 1) * tg;
+    return { tg, n, cur, round, frac: cur / tg };
+  }
+  function dhikrUpdate() {
+    const d = dhikrState(), g = id => document.getElementById(id);
+    if (g('dkCount')) g('dkCount').textContent = fa(d.cur);
+    if (g('dkRing')) g('dkRing').style.strokeDashoffset = String(DK_C * (1 - (d.tg ? d.frac : 0)));
+    if (g('dkRound')) g('dkRound').textContent = d.tg ? 'دور ' + fa(d.round) + ' از هدف ' + fa(d.tg) : 'شمارش آزاد (بدون هدف)';
+    if (g('dkTotal')) g('dkTotal').textContent = 'مجموع: ' + fa(d.n);
+  }
   function renderDhikr() {
     const presets = (CONTENT && CONTENT.DHIKR_PRESETS) || [];
+    const TG = [[33, '۳۳'], [34, '۳۴'], [100, '۱۰۰'], [500, '۵۰۰'], [1000, '۱۰۰۰'], [0, 'آزاد']];
+    const cur = S.dhikrTarget === 0 ? 0 : (S.dhikrTarget || 33);
     app.innerHTML = header('ذکرشمار', 'tools') +
-      '<section class="card dhikr-card"><div class="dhikr-count" id="dkCount">' + fa(S.dhikrCount || 0) + '</div>' +
-      '<div class="hint" id="dkName">' + esc(S.dhikrName || 'سبحان الله') + '</div>' +
-      '<div class="hint">هدف: ' + fa(S.dhikrTarget || 33) + '</div>' +
-      '<button class="btn wide dhikr-tap" id="dkTap">بزن برای شمارش</button>' +
-      '<div class="quick"><button class="btn alt" id="dkReset">صفر</button><button class="btn alt" id="dkVib">' + (S.vibrateQibla ? 'ویبره روشن' : 'ویبره خاموش') + '</button></div></section>' +
+      '<section class="card dhikr-card"><div class="dk-name" id="dkName">' + esc(S.dhikrName || 'سبحان الله') + '</div>' +
+      '<button class="dk-tap" id="dkTap" aria-label="شمارش">' +
+        '<svg class="dk-svg" viewBox="0 0 240 240" aria-hidden="true"><circle class="dk-bg" cx="120" cy="120" r="104"/>' +
+        '<circle class="dk-ring" id="dkRing" cx="120" cy="120" r="104" stroke-dasharray="' + DK_C + '" stroke-dashoffset="' + DK_C + '" transform="rotate(-90 120 120)"/></svg>' +
+        '<span class="dk-in"><b class="dhikr-count" id="dkCount">۰</b><span class="dk-lbl">برای شمارش بزنید</span></span></button>' +
+      '<div class="hint" id="dkRound"></div><div class="hint" id="dkTotal"></div>' +
+      '<div class="dk-chips" aria-label="هدف شمارش">' + TG.map(([v, n]) => '<button class="dk-chip' + (v === cur ? ' on' : '') + '" data-dktg="' + v + '">' + n + '</button>').join('') + '</div>' +
+      '<div class="quick"><button class="btn alt" id="dkUndo">' + ic('minus') + ' یکی کم</button><button class="btn alt" id="dkReset">صفر کردن</button></div>' +
+      '<div id="dkMsg" class="hint"></div></section>' +
+      '<section class="menu">' +
+        '<div class="mi"><span><b>ویبره</b><small>با هر شمارش و پایان هر دور</small></span><button class="sw' + (S.vibrateQibla ? ' on' : '') + '" id="dkVib" role="switch" aria-checked="' + !!S.vibrateQibla + '"></button></div>' +
+        '<div class="mi"><span><b>روشن ماندن صفحه</b><small>هنگام ذکر گفتن صفحه خاموش نشود</small></span><button class="sw' + (S.dhikrAwake !== false ? ' on' : '') + '" id="dkAwake" role="switch" aria-checked="' + (S.dhikrAwake !== false) + '"></button></div>' +
+      '</section>' +
       '<h2>انتخاب ذکر</h2><section class="menu">' +
-      presets.map(d => '<button class="mi" data-dk="' + d.id + '"><span><b>' + esc(d.name) + '</b><small>هدف ' + fa(d.target) + '</small></span></button>').join('') +
+      presets.map(d => '<button class="mi' + (S.dhikrName === d.name ? ' sel' : '') + '" data-dk="' + d.id + '"><span><b>' + esc(d.name) + '</b><small>هدف ' + fa(d.target) + '</small></span></button>').join('') +
       '</section>';
+    dhikrUpdate();
   }
   function renderRakat() {
     app.innerHTML = header('رکعت‌شمار', 'tools') +
@@ -1017,6 +1271,29 @@ function renderFaq() {
     if (i < 0 || i >= stack.length - 1) return;                   // not one of our screens / nothing to do
     stack = stack.slice(0, i + 1); show(stack[i]);                // Back = previous menu
   });
+  const fmtMS = ms => { const t = Math.max(0, Math.round(ms / 1000)); return fa(Math.floor(t / 60) + ':' + p2(t % 60)); };
+  const azanKeyOf = name => Object.keys(SHORT).find(k => SHORT[k] === name) || '';
+  function ovBuild(s, p) {
+    const k = azanKeyOf(s.name);
+    ov.className = ''; ov.dataset.k = k || 'test';
+    ov.innerHTML = '<div class="ov-glow"></div><div class="ov-wave"></div><div class="ov-wave w2"></div><div class="ov-in">' +
+      '<div class="ov-pill">' + ic('pin') + ' ' + esc(p.name) + '</div>' +
+      '<div class="ov-icon">' + (ICON[k] || ic('moon')) + '</div>' +
+      '<div class="ov-sub">' + (s.name ? 'وقت اذان' : 'آزمایش صدای اذان') + '</div>' +
+      '<div class="ov-title">' + (s.name ? esc(s.name) : 'اذان') + '</div>' +
+      '<div id="ovClock" class="ov-clock"></div>' +
+      '<div id="ovDate" class="ov-date"></div><div id="ovDate2" class="ov-date2"></div>' +
+      '<div class="ov-prog" id="ovProg"><i id="ovBar"></i></div>' +
+      '<div class="ov-pt" id="ovPt"><span id="ovPos" dir="ltr"></span><span id="ovDur" dir="ltr"></span></div>' +
+      '<div class="ov-dua"><span class="ov-dl">صلوات</span>اللّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَآلِ مُحَمَّدٍ وَعَجِّلْ فَرَجَهُمْ</div>' +
+      '<div id="ovMsg" class="ov-msg"></div>' +
+      '<div class="ov-vol"><button class="ov-vb" id="ovVd" aria-label="کم کردن صدا">' + ic('minus') + '</button>' +
+      '<input id="ovVol" type="range" min="5" max="100" value="100" aria-label="میزان صدا">' +
+      '<button class="ov-vb" id="ovVu" aria-label="زیاد کردن صدا">' + ic('plus') + '</button></div>' +
+      '<div class="ov-btns"><button id="ovMute" class="ov-btn">' + ic('soff') + ' قطع صدا</button><button id="ovClose" class="ov-btn alt">' + ic('close') + ' بستن</button></div>' +
+      '<div id="ovNext" class="ov-next"></div>' +
+      '<div class="ov-hint">با پایان اذان این صفحه خودکار بسته می‌شود. برای بستن زودتر، دکمه بازگشت گوشی یا «بستن» را بزنید.</div></div>';
+  }
   async function pollAzan() {
     if (document.hidden || ovBusy) return;
     ovBusy = true;
@@ -1027,22 +1304,30 @@ function renderFaq() {
       if (!live && (ov.hidden || ovKey === null)) return;       // nothing to show
       const p = place(), g = id => document.getElementById(id);
       if (live && ovKey !== s.startedAt) {                      // a new azan started: build the screen
-        ovKey = s.startedAt; ovShown = false; ovDone = false; ov.className = '';
-        ov.innerHTML = '<div class="ov-wave"></div><div class="ov-wave w2"></div><div class="ov-in"><div class="pill">' + ic('pin') + ' ' + esc(p.name) + '</div><div class="ov-icon">' + ic('moon') + '</div>' +
-          '<div class="ov-title">' + (s.name ? 'وقت اذان ' + esc(s.name) : 'آزمایش صدای اذان') + '</div><div id="ovClock" class="ov-clock"></div>' +
-          '<div id="ovDate" class="ov-date"></div><div id="ovMsg" class="ov-msg"></div>' +
-          '<div class="ov-btns"><button id="ovMute" class="ov-btn">' + ic('soff') + ' قطع صدا</button><button id="ovClose" class="ov-btn alt">' + ic('close') + ' بستن</button></div>' +
-          '<div class="ov-hint">با پایان اذان این صفحه خودکار بسته می‌شود. برای بستن زودتر، دکمه بازگشت گوشی یا «بستن» را بزنید.</div></div>';
-        ov.hidden = false;
+        ovKey = s.startedAt; ovShown = false; ovDone = false;
+        ovBuild(s, p);
+        ov.hidden = false; ov.scrollTop = 0;
         if (!ovHist) { try { history.pushState({ azan: 1 }, ''); ovHist = true; } catch (e) {} }
       }
-      const c = cityNow(p.tz);
+      const c = cityNow(p.tz), dt = dates(p);
       g('ovClock').textContent = fa(p2(c.getUTCHours()) + ':' + p2(c.getUTCMinutes()) + ':' + p2(c.getUTCSeconds()));
-      g('ovDate').textContent = dates(p).shamsi;
+      g('ovDate').textContent = dt.shamsi;
+      g('ovDate2').textContent = dt.qamari;
+      const nx = nextPrayer(p);
+      g('ovNext').textContent = nx ? 'اذان بعدی: ' + SHORT[nx.key] + ' · ساعت ' + hm(nx.min) : '';
       if (live) {
-        awake(true); ovDone = false; ov.className = ''; ovMuted = !!s.muted;
+        awake(true); ovDone = false; ovMuted = !!s.muted;
+        ov.classList.toggle('muted', ovMuted);
         g('ovMsg').textContent = ovMuted ? 'صدا قطع شد' : '';
         if (ovShown !== ovMuted) { g('ovMute').innerHTML = ovMuted ? ic('sound') + ' پخش صدا' : ic('soff') + ' قطع صدا'; ovShown = ovMuted; }
+        const hasDur = s.dur > 0;                               // playback progress
+        g('ovProg').style.visibility = g('ovPt').style.visibility = hasDur ? 'visible' : 'hidden';
+        if (hasDur) {
+          g('ovBar').style.width = Math.min(100, Math.max(0, s.pos / s.dur * 100)) + '%';
+          g('ovPos').textContent = fmtMS(s.pos); g('ovDur').textContent = fmtMS(s.dur);
+        }
+        const vs = g('ovVol');
+        if (vs && typeof s.volume === 'number' && document.activeElement !== vs) vs.value = Math.round(s.volume * 100);
       } else {                                                  // azan finished by itself: close the screen automatically
         closeAzan(false);
       }
@@ -1088,6 +1373,10 @@ function renderFaq() {
     if (el.id === 'mAdd') { const n = (window.prompt('نام مؤذن:') || '').trim(); if (n) { S.muezzins.push({ id: 'm' + Date.now(), name: n, path: '', file: '' }); save(false); renderMuezzin(); } }
     if (el.id === 'ovMute') { await Native.mute(!ovMuted); setTimeout(pollAzan, 300); }
     if (el.id === 'ovClose') closeAzan();
+    if (el.id === 'ovVd' || el.id === 'ovVu') {
+      const vs = document.getElementById('ovVol');
+      if (vs) { vs.value = Math.max(5, Math.min(100, (+vs.value || 100) + (el.id === 'ovVu' ? 10 : -10))); Native.volume(vs.value / 100); }
+    }
     if (el.id === 'nFs') Native.fullScreenSettings();
     if (el.id === 'nAsk') {
       await Native.askNotifications();
@@ -1146,8 +1435,24 @@ function renderFaq() {
     if (el.dataset.imsak) { S.showImsak = !S.showImsak; save(false); renderDisplay(); }
     if (el.dataset.midn) { S.showMidnight = !S.showMidnight; save(false); renderDisplay(); }
     if (el.dataset.amoled) { S.amoled = !S.amoled; applyUiPrefs(); save(false); renderDisplay(); }
+    if (el.dataset.rmotion) { S.reduceMotion = !S.reduceMotion; applyUiPrefs(); save(false); renderDisplay(); }
+    if (el.dataset.compact) { S.compactHome = !S.compactHome; applyUiPrefs(); save(false); renderDisplay(); }
+    if (el.dataset.dgoal) { S.dailyGoal = !(S.dailyGoal !== false); save(false); renderDisplay(); }
+    if (el.dataset.fri) { S.highlightFriday = !(S.highlightFriday !== false); applyUiPrefs(); save(false); renderDisplay(); }
+    if (el.dataset.smartn) { S.smartNotif = !(S.smartNotif !== false); save(); renderNotif(); }
+    if (el.dataset.quiet) { S.quietHours = !S.quietHours; save(); renderNotif(); }
+    if (el.dataset.ramhint) { S.ramadanHint = !(S.ramadanHint !== false); save(); renderNotif(); }
+    if (el.dataset.vibpre) { S.vibratePre = !(S.vibratePre !== false); save(); renderNotif(); }
+    if (el.dataset.preen) {
+      if (!S.preEnabled) S.preEnabled = { fajr: true, dhuhr: true, asr: true, maghrib: true, isha: true };
+      const k = el.dataset.preen;
+      S.preEnabled[k] = S.preEnabled[k] === false ? true : false;
+      save(); renderNotif();
+    }
     if (el.dataset.ramadan) { S.ramadanMode = !S.ramadanMode; save(false); renderDisplay(); }
     if (el.dataset.shake) { S.shakeDhikr = !S.shakeDhikr; save(false); renderDisplay(); }
+    if (el.dataset.vibsw) { S.vibrateQibla = !S.vibrateQibla; save(false); renderDisplay(); if (S.vibrateQibla) vib('test'); }
+    if (el.dataset.vibazan) { S.vibrateAzan = !S.vibrateAzan; save(); renderAzan(); }
     if (el.id === 'namazMode') {
       const key = new Date().toISOString().slice(0, 10);
       if (!S.streak) S.streak = { days: 0, last: '' };
@@ -1191,21 +1496,34 @@ function renderFaq() {
 
     if (el.id === 'dkTap') {
       S.dhikrCount = (S.dhikrCount || 0) + 1;
-      const elc = document.getElementById('dkCount');
-      if (elc) elc.textContent = fa(S.dhikrCount);
-      if (S.vibrateQibla && navigator.vibrate) navigator.vibrate(12);
-      if (S.dhikrCount >= (S.dhikrTarget || 33) && S.dhikrCount % (S.dhikrTarget || 33) === 0 && navigator.vibrate) navigator.vibrate([30, 40, 30]);
+      dhikrUpdate();
+      const d = dhikrState();
+      vib(d.tg && d.cur === d.tg ? 'done' : 'tap');
       save(false);
     }
-    if (el.id === 'dkReset') { S.dhikrCount = 0; save(false); renderDhikr(); }
-    if (el.id === 'dkVib') { S.vibrateQibla = !S.vibrateQibla; save(false); renderDhikr(); }
+    if (el.id === 'dkUndo') { S.dhikrCount = Math.max(0, (S.dhikrCount || 0) - 1); dhikrUpdate(); save(false); }
+    if (el.id === 'dkReset') {                       // two taps, so it can't be reset by accident
+      if (!el.dataset.arm) {
+        el.dataset.arm = '1'; el.textContent = 'مطمئنید؟ دوباره بزنید';
+        setTimeout(() => { if (el.isConnected) { delete el.dataset.arm; el.textContent = 'صفر کردن'; } }, 3000);
+      } else { S.dhikrCount = 0; save(false); renderDhikr(); }
+    }
+    if (el.dataset.dktg !== undefined) { S.dhikrTarget = parseInt(el.dataset.dktg, 10) || 0; save(false); renderDhikr(); }
+    if (el.id === 'dkVib') {
+      S.vibrateQibla = !S.vibrateQibla; save(false); renderDhikr();
+      if (S.vibrateQibla) {
+        const r = await vib('test'), m = document.getElementById('dkMsg');
+        if (m && r && !r.ok) m.textContent = r.has === false ? 'این دستگاه موتور ویبره ندارد.' : 'ویبره اجرا نشد. در تنظیمات گوشی (صدا و ویبره) شدت ویبره را بررسی کنید و حالت صرفه‌جویی باتری را خاموش کنید.';
+      }
+    }
+    if (el.id === 'dkAwake') { S.dhikrAwake = S.dhikrAwake === false; save(false); renderDhikr(); syncAwake(page); }
     if (el.dataset.dk) {
       const pr = ((CONTENT && CONTENT.DHIKR_PRESETS) || []).find(x => x.id === el.dataset.dk);
-      if (pr) { S.dhikrName = pr.name; S.dhikrTarget = pr.target; S.dhikrCount = 0; save(false); renderDhikr(); }
+      if (pr) { S.dhikrName = pr.name; S.dhikrTarget = pr.target; S.dhikrCount = 0; save(false); renderDhikr(); window.scrollTo(0, 0); }
     }
     if (el.id === 'rkTap') {
       const elc = document.getElementById('rkCount');
-      if (elc) { const n = (parseInt(elc.dataset.n || '0', 10) + 1); elc.dataset.n = n; elc.textContent = fa(n); if (navigator.vibrate) navigator.vibrate(10); }
+      if (elc) { const n = (parseInt(elc.dataset.n || '0', 10) + 1); elc.dataset.n = n; elc.textContent = fa(n); vib('rakat'); }
     }
     if (el.id === 'rkReset') { const elc = document.getElementById('rkCount'); if (elc) { elc.dataset.n = 0; elc.textContent = fa(0); } }
     if (el.dataset.qada) {
@@ -1244,6 +1562,7 @@ function renderFaq() {
       });
     }
     if (e.target.id === 'vol') { S.volume = e.target.value / 100; document.getElementById('volV').textContent = fa(e.target.value) + '٪'; }
+    if (e.target.id === 'ovVol') Native.volume(e.target.value / 100);   // live volume on the azan screen
   });
   document.addEventListener('change', e => {
     if (e.target.id === 'cvType') {
@@ -1255,6 +1574,9 @@ function renderFaq() {
     }
     if (e.target.id === 'vol') save();
     if (e.target.id === 'pre') { S.pre = parseInt(e.target.value, 10); save(); }
+    if (e.target.id === 'preFajr') { S.preFajr = e.target.value === '' ? null : parseInt(e.target.value, 10); save(); }
+    if (e.target.id === 'qStart') { S.quietStart = parseInt(e.target.value, 10) || 23; save(); }
+    if (e.target.id === 'qEnd') { S.quietEnd = parseInt(e.target.value, 10) || 5; save(); }
     if (e.target.id === 'hj') { S.hijriOffset = parseInt(e.target.value, 10); save(false); }
     if (e.target.id === 'fontScale') {
       S.fontScale = parseFloat(e.target.value) || 1;
@@ -1329,9 +1651,9 @@ function renderFaq() {
     if (force > 25 && now - lastShake > 600) {
       lastShake = now;
       S.dhikrCount = (S.dhikrCount || 0) + 1;
-      const elc = document.getElementById('dkCount');
-      if (elc) elc.textContent = fa(S.dhikrCount);
-      if (S.vibrateQibla && navigator.vibrate) navigator.vibrate(10);
+      dhikrUpdate();
+      const d = dhikrState();
+      vib(d.tg && d.cur === d.tg ? 'done' : 'tap');
       save(false);
     }
   }, { passive: true });

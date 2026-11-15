@@ -1,0 +1,108 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/wgt_hw_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="horizontal"
+    android:padding="12dp"
+    android:background="@drawable/wgt_bg"
+    android:gravity="center_vertical">
+
+    <!-- Left / main: Hijri -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1.1"
+        android:orientation="vertical"
+        android:gravity="center_vertical|end"
+        android:paddingEnd="8dp">
+
+        <TextView
+            android:id="@+id/wgt_hw_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="هجری قمری"
+            android:textColor="#E8B86D"
+            android:textSize="11sp"
+            android:textDirection="rtl"
+            android:gravity="end" />
+
+        <TextView
+            android:id="@+id/wgt_hw_day"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="—"
+            android:textColor="#FFFFFFF0"
+            android:textSize="32sp"
+            android:textStyle="bold"
+            android:textDirection="rtl"
+            android:gravity="end"
+            android:fontFamily="sans-serif-medium" />
+
+        <TextView
+            android:id="@+id/wgt_hw_month"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="—"
+            android:textColor="#E8B86D"
+            android:textSize="13sp"
+            android:textStyle="bold"
+            android:textDirection="rtl"
+            android:gravity="end"
+            android:maxLines="1"
+            android:ellipsize="end" />
+    </LinearLayout>
+
+    <!-- Divider -->
+    <ImageView
+        android:layout_width="2dp"
+        android:layout_height="match_parent"
+        android:layout_marginVertical="8dp"
+        android:src="@drawable/wgt_accent_bar"
+        android:contentDescription="@null"
+        android:scaleType="fitXY" />
+
+    <!-- Right: Shamsi + occasion -->
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center_vertical|start"
+        android:paddingStart="10dp">
+
+        <TextView
+            android:id="@+id/wgt_hw_shamsi_label"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="هجری شمسی"
+            android:textColor="#99F7EFE4"
+            android:textSize="11sp"
+            android:textDirection="rtl" />
+
+        <TextView
+            android:id="@+id/wgt_hw_shamsi"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="—"
+            android:textColor="#FFFFFFF0"
+            android:textSize="14sp"
+            android:textStyle="bold"
+            android:textDirection="rtl"
+            android:paddingTop="2dp"
+            android:maxLines="2"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/wgt_hw_occ"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textColor="#E89A8A"
+            android:textSize="11sp"
+            android:textDirection="rtl"
+            android:paddingTop="6dp"
+            android:maxLines="2"
+            android:ellipsize="end" />
+    </LinearLayout>
+</LinearLayout>

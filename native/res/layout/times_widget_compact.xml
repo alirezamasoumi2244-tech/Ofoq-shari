@@ -3,30 +3,55 @@
     android:id="@+id/wgt_c_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:orientation="vertical"
-    android:gravity="center"
-    android:padding="8dp"
-    android:background="#E60F1419">
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingHorizontal="12dp"
+    android:paddingVertical="8dp"
+    android:background="@drawable/wgt_bg_compact">
 
-    <TextView
-        android:id="@+id/wgt_c_name"
-        android:layout_width="match_parent"
+    <LinearLayout
+        android:layout_width="0dp"
         android:layout_height="wrap_content"
-        android:text="اذان"
-        android:textColor="#99EEF4FA"
-        android:textSize="11sp"
-        android:gravity="center"
-        android:textDirection="rtl" />
+        android:layout_weight="1"
+        android:orientation="vertical"
+        android:gravity="center_vertical|end">
+
+        <TextView
+            android:id="@+id/wgt_c_name"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="اذان"
+            android:textColor="#A8F7EFE4"
+            android:textSize="11sp"
+            android:gravity="end"
+            android:textDirection="rtl"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/wgt_c_sub"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text=""
+            android:textColor="#80F7EFE4"
+            android:textSize="10sp"
+            android:gravity="end"
+            android:textDirection="rtl"
+            android:maxLines="1"
+            android:ellipsize="end" />
+    </LinearLayout>
 
     <TextView
         android:id="@+id/wgt_c_time"
-        android:layout_width="match_parent"
+        android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:text="--:--"
-        android:textColor="#FF3DD6C3"
+        android:textColor="#E8B86D"
         android:textSize="22sp"
         android:textStyle="bold"
         android:gravity="center"
         android:textDirection="ltr"
-        android:paddingTop="2dp" />
+        android:paddingStart="10dp"
+        android:fontFamily="sans-serif-medium"
+        android:letterSpacing="0.03" />
 </LinearLayout>

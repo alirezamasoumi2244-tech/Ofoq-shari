@@ -1,0 +1,119 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/wgt_p_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="14dp"
+    android:background="@drawable/wgt_bg">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <TextView
+            android:id="@+id/wgt_p_city"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="افق شرعی"
+            android:textColor="#A8F7EFE4"
+            android:textSize="12sp"
+            android:textDirection="rtl"
+            android:maxLines="1"
+            android:ellipsize="end" />
+
+        <TextView
+            android:id="@+id/wgt_p_badge"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="اذان بعدی"
+            android:textColor="#E8B86D"
+            android:textSize="11sp"
+            android:background="@drawable/wgt_chip"
+            android:paddingHorizontal="8dp"
+            android:paddingVertical="3dp"
+            android:textDirection="rtl" />
+    </LinearLayout>
+
+    <ImageView
+        android:layout_width="36dp"
+        android:layout_height="3dp"
+        android:layout_marginTop="8dp"
+        android:layout_marginBottom="8dp"
+        android:src="@drawable/wgt_accent_bar"
+        android:contentDescription="@null" />
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="horizontal"
+        android:gravity="center_vertical">
+
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical">
+
+            <TextView
+                android:id="@+id/wgt_p_name"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="اذان ظهر"
+                android:textColor="#FFFFFFF0"
+                android:textSize="15sp"
+                android:textStyle="bold"
+                android:textDirection="rtl"
+                android:maxLines="1" />
+
+            <TextView
+                android:id="@+id/wgt_p_time"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:text="--:--"
+                android:textColor="#E8B86D"
+                android:textSize="28sp"
+                android:textStyle="bold"
+                android:fontFamily="sans-serif-medium"
+                android:textDirection="ltr"
+                android:letterSpacing="0.04" />
+        </LinearLayout>
+
+        <TextView
+            android:id="@+id/wgt_p_remain"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="--:--"
+            android:textColor="#E8B86D"
+            android:textSize="18sp"
+            android:textStyle="bold"
+            android:textDirection="ltr"
+            android:paddingStart="8dp"
+            android:fontFamily="sans-serif-medium" />
+    </LinearLayout>
+
+    <ProgressBar
+        android:id="@+id/wgt_p_bar"
+        style="?android:attr/progressBarStyleHorizontal"
+        android:layout_width="match_parent"
+        android:layout_height="8dp"
+        android:layout_marginTop="12dp"
+        android:max="1000"
+        android:progress="0"
+        android:progressDrawable="@drawable/wgt_progress"
+        android:indeterminate="false" />
+
+    <TextView
+        android:id="@+id/wgt_p_sub"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="#99F7EFE4"
+        android:textSize="11sp"
+        android:textDirection="rtl"
+        android:paddingTop="6dp"
+        android:maxLines="1" />
+</LinearLayout>

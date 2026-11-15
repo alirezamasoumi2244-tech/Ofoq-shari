@@ -6,7 +6,11 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.media.AudioAttributes
 import android.os.Build
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import org.json.JSONArray
@@ -28,6 +32,38 @@ object AzanCore {
     fun config(c: Context): JSONObject =
         try { JSONObject(prefs(c).getString("config", "{}") ?: "{}") } catch (e: Exception) { JSONObject() }
 
+    @Suppress("DEPRECATION")
+    fun vibrator(c: Context): Vibrator? = try {
+        if (Build.VERSION.SDK_INT >= 31) c.getSystemService(VibratorManager::class.java)?.defaultVibrator
+        else c.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator
+    } catch (e: Exception) { null }
+
+    /**
+     * Native vibration (the WebView's navigator.vibrate is unreliable on many phones).
+     * [pattern] uses the same format as the web API: [vibrate, pause, vibrate, ...] in ms.
+     * Returns false when the phone has no vibrator or the call failed.
+     */
+    @Suppress("DEPRECATION")
+    fun vibrate(c: Context, pattern: LongArray): Boolean {
+        val v = vibrator(c) ?: return false
+        return try {
+            if (!v.hasVibrator() || pattern.isEmpty()) return false
+            // USAGE_ALARM: not blocked by the phone's "touch vibration" switch (the usual reason web vibration stays silent)
+            val attrs = AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_ALARM)
+                .setContentType(AudioAttributes.CONTENT_TYPE_SONIFICATION).build()
+            val p = pattern.map { it.coerceIn(0L, 5000L) }.toLongArray()
+            if (Build.VERSION.SDK_INT >= 26) {
+                val e = if (p.size == 1) VibrationEffect.createOneShot(maxOf(p[0], 10L), VibrationEffect.DEFAULT_AMPLITUDE)
+                        else VibrationEffect.createWaveform(longArrayOf(0L) + p, -1)
+                v.vibrate(e, attrs)
+            } else {
+                if (p.size == 1) v.vibrate(maxOf(p[0], 10L), attrs) else v.vibrate(longArrayOf(0L) + p, -1, attrs)
+            }
+            true
+        } catch (e: Exception) { false }
+    }
+
     fun ensureChannels(c: Context) {
         if (Build.VERSION.SDK_INT < 26) return
         val nm = c.getSystemService(NotificationManager::class.java)
@@ -35,12 +71,21 @@ object AzanCore {
             description = "نمایش هنگام پخش اذان و دکمه توقف"
             setSound(null, null)
             lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+            enableVibration(true)
+            setBypassDnd(true)
         }
-        val pre = NotificationChannel(CH_PRE, "یادآوری قبل از اذان", NotificationManager.IMPORTANCE_DEFAULT).apply {
-            description = "اعلان چند دقیقه قبل از اذان"
+        val pre = NotificationChannel(CH_PRE, "یادآوری هوشمند اذان", NotificationManager.IMPORTANCE_DEFAULT).apply {
+            description = "اعلان چند دقیقه قبل از اذان با جزئیات شهر و ساعت"
+            lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+        }
+        // Low-priority channel for optional next-azan status (not used aggressively)
+        val status = NotificationChannel("azan_status", "وضعیت اذان بعدی", NotificationManager.IMPORTANCE_LOW).apply {
+            description = "یادآوری آرام وضعیت بعدی (اختیاری)"
+            setShowBadge(false)
         }
         nm.createNotificationChannel(azan)
         nm.createNotificationChannel(pre)
+        nm.createNotificationChannel(status)
     }
 
     private fun launchIntent(c: Context): PendingIntent {
@@ -80,18 +125,91 @@ object AzanCore {
         TimesWidget.refreshAll(c)
     }
 
+    /** True if current local hour is inside quiet window (e.g. 23–5). */
+    fun inQuietHours(c: Context): Boolean {
+        val cfg = config(c)
+        if (!cfg.optBoolean("quietHours", false)) return false
+        val start = cfg.optInt("quietStart", 23) // inclusive
+        val end = cfg.optInt("quietEnd", 5)     // exclusive
+        val cal = java.util.Calendar.getInstance()
+        val h = cal.get(java.util.Calendar.HOUR_OF_DAY)
+        return if (start < end) h in start until end else (h >= start || h < end)
+    }
+
     fun notifyPre(c: Context, name: String, min: Int) {
         ensureChannels(c)
         val nm = NotificationManagerCompat.from(c)
         if (!nm.areNotificationsEnabled()) return
+        // Smart quiet hours: suppress pre-reminders late at night (except Fajr which is intentional)
+        val isFajr = name.contains("صبح") || name.contains("فجر")
+        if (inQuietHours(c) && !isFajr) return
+
+        val cfg = config(c)
+        val smart = cfg.optBoolean("smartNotif", true)
+        val city = if (smart) cfg.optString("city", "") else ""
+        val today = if (smart) cfg.optJSONObject("today") else null
+        // Map short name to time key
+        val key = when {
+            name.contains("صبح") || name.contains("فجر") -> "fajr"
+            name.contains("ظهر") -> "dhuhr"
+            name.contains("عصر") -> "asr"
+            name.contains("مغرب") -> "maghrib"
+            name.contains("عشا") -> "isha"
+            else -> ""
+        }
+        val clock = if (key.isNotEmpty() && today != null) today.optString(key, "") else ""
+
+        val title = when {
+            isFajr -> "آماده‌سازی برای اذان صبح"
+            name.contains("مغرب") -> "نزدیک افطار / اذان مغرب"
+            else -> "اذان $name نزدیک است"
+        }
+        val line1 = if (min > 0) "$min دقیقه تا اذان $name" else "وقت اذان $name نزدیک است"
+        val line2 = buildString {
+            if (clock.isNotEmpty()) append("ساعت $clock")
+            if (city.isNotEmpty()) {
+                if (isNotEmpty()) append(" · ")
+                append(city)
+            }
+        }
+        val big = buildString {
+            append(line1)
+            if (line2.isNotEmpty()) append("\n").append(line2)
+            if (isFajr) append("\nآماده‌ی نماز صبح باشید")
+            else if (name.contains("مغرب") && cfg.optBoolean("ramadanHint", false))
+                append("\nاگر روزه هستید، برای افطار آماده شوید")
+        }
+
+        val open = launchIntent(c)
+        val dismiss = PendingIntent.getBroadcast(
+            c, 2101,
+            Intent(c, AzanReceiver::class.java).setAction("com.ofoqshari.bz.DISMISS_PRE"),
+            PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
+        )
+
         val n = NotificationCompat.Builder(c, CH_PRE)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle("اذان $name نزدیک است")
-            .setContentText("$min دقیقه تا اذان $name")
-            .setContentIntent(launchIntent(c))
+            .setContentTitle(title)
+            .setContentText(if (line2.isNotEmpty()) "$line1 · $line2" else line1)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(big))
+            .setContentIntent(open)
+            .addAction(android.R.drawable.ic_menu_view, "باز کردن برنامه", open)
+            .addAction(android.R.drawable.ic_menu_close_clear_cancel, "بستن", dismiss)
             .setAutoCancel(true)
+            .setOnlyAlertOnce(true)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
             .setCategory(NotificationCompat.CATEGORY_REMINDER)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
             .build()
-        try { nm.notify(2000 + (System.currentTimeMillis() % 1000).toInt(), n) } catch (e: SecurityException) { /* no permission */ }
+        try {
+            // Stable id per prayer so updates replace instead of stacking
+            val id = 2100 + (key.hashCode() and 0xFF)
+            nm.notify(id, n)
+        } catch (e: SecurityException) { /* no permission */ }
+
+        // Gentle vibration for smart pre-reminder
+        if (cfg.optBoolean("vibratePre", true)) {
+            vibrate(c, longArrayOf(120, 80, 120))
+        }
     }
 }

@@ -21,6 +21,8 @@
     mute: on => call('mute', { on: !!on }),
     fullScreenSettings: () => call('fullScreenSettings'),
     keepAwake: on => call('keepAwake', { on: !!on }),
+    volume: v => call('volume', { v }),
+    vibrate: pat => call('vibrate', { pattern: [].concat(pat).join(',') }),
     openUrl: url => call('openUrl', { url: url || '' })
   };
 })();

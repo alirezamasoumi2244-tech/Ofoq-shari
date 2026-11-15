@@ -24,12 +24,18 @@ class AzanService : Service() {
     companion object {
         const val ACTION_STOP = "com.ofoqshari.bz.STOP"
         const val ACTION_MUTE = "com.ofoqshari.bz.MUTE"
+        const val ACTION_VOLUME = "com.ofoqshari.bz.VOLUME"
         const val NOTIF_ID = 1
         // Read by AzanPlugin.state() so the web UI knows when to show the azan screen.
         @Volatile var playing = false
         @Volatile var muted = false
         @Volatile var name = ""
         @Volatile var startedAt = 0L
+        @Volatile var duration = 0
+        @Volatile var volume = 1f
+        @Volatile private var live: MediaPlayer? = null
+        /** Position of the azan in ms (read by the web UI to draw the progress bar). */
+        fun position(): Int = try { live?.currentPosition ?: 0 } catch (_: Exception) { 0 }
     }
 
     private var player: MediaPlayer? = null
@@ -49,11 +55,18 @@ class AzanService : Service() {
                 setMuted(intent?.getBooleanExtra("on", true) ?: true)
                 return START_NOT_STICKY
             }
+            ACTION_VOLUME -> {
+                if (!playing) { stopSelf(); return START_NOT_STICKY }
+                vol = (intent?.getFloatExtra("v", vol) ?: vol).coerceIn(0.05f, 1f)
+                volume = vol
+                if (!muted) try { player?.setVolume(vol, vol) } catch (_: Exception) {}
+                return START_NOT_STICKY
+            }
         }
         AzanCore.ensureChannels(this)
         isTest = intent?.getBooleanExtra("test", false) == true
         name = if (isTest) "" else (intent?.getStringExtra("name") ?: "")
-        muted = false; playing = true; startedAt = System.currentTimeMillis()
+        muted = false; playing = true; startedAt = System.currentTimeMillis(); duration = 0
         try {
             ServiceCompat.startForeground(this, NOTIF_ID, notification(),
                 ServiceInfo.FOREGROUND_SERVICE_TYPE_MEDIA_PLAYBACK)
@@ -61,7 +74,10 @@ class AzanService : Service() {
         val cfg = AzanCore.config(this)
         val path = if (isTest) intent?.getStringExtra("path") ?: "" else cfg.optString("path", "")
         vol = (if (isTest) intent?.getFloatExtra("volume", 1f) ?: 1f else cfg.optDouble("volume", 1.0).toFloat()).coerceIn(0.05f, 1f)
+        volume = vol
         play(path)
+        // optional: a gentle vibration pattern when the azan starts (setting "ویبره هنگام شروع اذان")
+        if (!isTest && cfg.optBoolean("vibrate", false)) AzanCore.vibrate(this, longArrayOf(450, 250, 450, 250, 450))
         return START_NOT_STICKY
     }
 
@@ -74,14 +90,28 @@ class AzanService : Service() {
         val open = PendingIntent.getActivity(this, 3,
             Intent(this, MainActivity::class.java).putExtra("azan", true)
                 .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP), fl)
+        val cfg = AzanCore.config(this)
+        val city = cfg.optString("city", "")
+        val title = when {
+            name.isEmpty() -> "آزمایش صدای اذان"
+            else -> "وقت اذان $name"
+        }
+        val body = when {
+            muted -> "صدا قطع شد" + (if (city.isNotEmpty()) " · $city" else "")
+            city.isNotEmpty() -> "در حال پخش اذان · $city"
+            else -> "برای قطع صدا یا توقف، دکمه‌ها را بزنید"
+        }
         val b = NotificationCompat.Builder(this, AzanCore.CH_AZAN)
             .setSmallIcon(android.R.drawable.ic_lock_idle_alarm)
-            .setContentTitle(if (name.isEmpty()) "آزمایش صدای اذان" else "وقت اذان $name")
-            .setContentText(if (muted) "صدا قطع شد" else "برای قطع صدا یا توقف، دکمه‌ها را بزنید")
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body + "\nلمس کنید تا صفحه اذان باز شود"))
             .setContentIntent(open)
             .addAction(android.R.drawable.ic_lock_silent_mode, if (muted) "پخش صدا" else "قطع صدا", mute)
             .addAction(android.R.drawable.ic_media_pause, "توقف اذان", stop)
             .setOngoing(true).setCategory(NotificationCompat.CATEGORY_ALARM)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            .setOnlyAlertOnce(true)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
         if (!isTest) b.setFullScreenIntent(open, true)
@@ -115,18 +145,18 @@ class AzanService : Service() {
                     ?: RingtoneManager.getDefaultUri(RingtoneManager.TYPE_NOTIFICATION))
             }
             mp.setVolume(vol, vol)
-            mp.setOnPreparedListener { it.start() }
+            mp.setOnPreparedListener { duration = try { it.duration } catch (_: Exception) { 0 }; it.start() }
             mp.setOnCompletionListener { stopAll() }
             mp.setOnErrorListener { _, w, e -> Log.e("AzanGo", "player error $w/$e"); stopAll(); true }
             mp.prepareAsync()
-            player = mp
+            player = mp; live = mp
         } catch (e: Exception) { Log.e("AzanGo", "play failed", e); stopAll() }
     }
 
     private fun releasePlayer() {
         try { player?.stop() } catch (_: Exception) {}
         try { player?.release() } catch (_: Exception) {}
-        player = null
+        player = null; live = null
         if (Build.VERSION.SDK_INT >= 26) focus?.let { getSystemService(AudioManager::class.java).abandonAudioFocusRequest(it) }
         focus = null
     }

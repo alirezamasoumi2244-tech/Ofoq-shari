@@ -30,3 +30,35 @@
             <meta-data android:name="android.appwidget.provider"
                 android:resource="@xml/times_widget_compact_info" />
         </receiver>
+        <receiver android:name=".TimesWidgetProgress" android:exported="true"
+            android:label="افق شرعی — با پیشرفت">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/times_widget_progress_info" />
+        </receiver>
+        <receiver android:name=".TimesWidgetGrid" android:exported="true"
+            android:label="افق شرعی — گرید اوقات">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/times_widget_grid_info" />
+        </receiver>
+        <receiver android:name=".TimesWidgetHijri" android:exported="true"
+            android:label="افق شرعی — تقویم هجری">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/times_widget_hijri_info" />
+        </receiver>
+        <receiver android:name=".TimesWidgetHijriWide" android:exported="true"
+            android:label="افق شرعی — تاریخ هجری">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
+            </intent-filter>
+            <meta-data android:name="android.appwidget.provider"
+                android:resource="@xml/times_widget_hijri_wide_info" />
+        </receiver>

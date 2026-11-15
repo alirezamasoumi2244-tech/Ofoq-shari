@@ -1,0 +1,81 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/wgt_h_root"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent"
+    android:orientation="vertical"
+    android:padding="14dp"
+    android:background="@drawable/wgt_bg"
+    android:gravity="center_vertical">
+
+    <TextView
+        android:id="@+id/wgt_h_label"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="تقویم هجری قمری"
+        android:textColor="#E8B86D"
+        android:textSize="11sp"
+        android:textDirection="rtl"
+        android:maxLines="1" />
+
+    <ImageView
+        android:layout_width="32dp"
+        android:layout_height="3dp"
+        android:layout_marginTop="6dp"
+        android:layout_marginBottom="8dp"
+        android:src="@drawable/wgt_accent_bar"
+        android:contentDescription="@null" />
+
+    <!-- Big Hijri day number -->
+    <TextView
+        android:id="@+id/wgt_h_day"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="—"
+        android:textColor="#FFFFFFF0"
+        android:textSize="36sp"
+        android:textStyle="bold"
+        android:textDirection="rtl"
+        android:fontFamily="sans-serif-medium"
+        android:maxLines="1" />
+
+    <!-- Month + Year -->
+    <TextView
+        android:id="@+id/wgt_h_month"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text="—"
+        android:textColor="#E8B86D"
+        android:textSize="15sp"
+        android:textStyle="bold"
+        android:textDirection="rtl"
+        android:paddingTop="2dp"
+        android:maxLines="1"
+        android:ellipsize="end" />
+
+    <!-- Shamsi under -->
+    <TextView
+        android:id="@+id/wgt_h_shamsi"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="#99F7EFE4"
+        android:textSize="12sp"
+        android:textDirection="rtl"
+        android:paddingTop="8dp"
+        android:maxLines="1"
+        android:ellipsize="end" />
+
+    <!-- Occasion if any -->
+    <TextView
+        android:id="@+id/wgt_h_occ"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:text=""
+        android:textColor="#E89A8A"
+        android:textSize="11sp"
+        android:textDirection="rtl"
+        android:paddingTop="4dp"
+        android:maxLines="2"
+        android:ellipsize="end" />
+</LinearLayout>
