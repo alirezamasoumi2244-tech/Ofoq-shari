@@ -34,6 +34,8 @@ body{margin:0;min-height:100vh;color:var(--text);font-family:"Vazirmatn","Noto S
 button{font:inherit;color:inherit;border:0;background:none;cursor:pointer;transition:transform .12s ease,opacity .15s}
 button:active{transform:scale(.97)}
 .ic{stroke:currentColor;fill:none;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round}
+.card h3 .ic{width:18px;height:18px;flex-shrink:0;display:inline-block;vertical-align:-4px}
+.pill .ic{width:16px;height:16px}
 .btn .ic{width:20px;height:20px;flex-shrink:0}
 body[data-mode="light"] .top h1{color:var(--text)}
 
@@ -175,6 +177,8 @@ h2{font-size:.88rem;margin:16px 4px 8px;color:var(--amber);font-weight:700}
 .qibla-arrow{width:0;height:0;border-left:22px solid transparent;border-right:22px solid transparent;border-bottom:110px solid var(--amber);transform-origin:50% 90%;filter:drop-shadow(0 6px 14px rgba(0,0,0,.45));transition:transform .1s linear;position:relative}
 .qibla-arrow::after{content:'';position:absolute;left:50%;bottom:-10px;transform:translateX(-50%);width:16px;height:16px;border-radius:50%;background:var(--amber);box-shadow:0 0 0 8px var(--amber-soft)}
 .qibla-deg{font-size:2rem;font-weight:800;color:var(--amber)}
+.qibla-city{display:inline-flex;align-items:center;gap:6px;margin:0 auto;padding:5px 16px;border-radius:999px;background:var(--amber-soft);border:1px solid rgba(232,184,109,.28);color:var(--amber);font-size:.82rem;font-weight:700}
+.qibla-city .ic{width:14px;height:14px}
 .q-ok{color:var(--ok)!important;font-weight:600}
 
 .dhikr-card{text-align:center;padding:28px 16px}
@@ -214,6 +218,19 @@ h2{font-size:.88rem;margin:16px 4px 8px;color:var(--amber);font-weight:700}
 .setup-card h3{display:flex;align-items:center;gap:8px;margin:0 0 10px;font-size:1rem}
 .setup-city-list,#cList{max-height:min(40vh,300px);overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;gap:6px;margin:4px 0 6px}
 .setup-finish{margin-top:8px;font-size:1rem;min-height:52px;width:100%}
+
+/* —— onboarding wizard (4 slides) —— */
+.ob-dots{display:flex;gap:6px;margin:0 0 14px}
+.ob-dot{flex:1;display:flex;flex-direction:column;align-items:center;gap:5px;font-size:.66rem;color:var(--muted)}
+.ob-dot-c{width:30px;height:30px;border-radius:50%;border:1.5px solid var(--line);background:var(--card);display:flex;align-items:center;justify-content:center;font-weight:700;font-size:.8rem;transition:all .2s ease}
+.ob-dot .ic{width:15px;height:15px;stroke-width:2.4}
+.ob-dot.on .ob-dot-c{background:var(--amber);border-color:var(--amber);color:#201608;box-shadow:0 0 0 4px var(--amber-soft)}
+.ob-dot.on .ob-dot-t{color:var(--amber);font-weight:700}
+.ob-dot.done .ob-dot-c{background:rgba(143,212,168,.15);border-color:rgba(143,212,168,.45);color:var(--ok)}
+.ob-dot.done .ob-dot-t{color:var(--ok)}
+.ob-nav{display:flex;gap:10px;margin-top:14px}
+.ob-nav .btn{flex:1;min-height:52px}
+.ob-nav .setup-finish{margin-top:0}
 
 /* —— azan screen (always dark, tinted by the prayer; independent of the light/dark app theme) —— */
 #azanScreen{position:fixed;inset:0;z-index:9999;display:flex;justify-content:center;
@@ -296,6 +313,7 @@ body[data-mode="light"] .btn.alt{background:var(--card2);color:var(--text);borde
 body[data-mode="light"] .sw{background:rgba(0,0,0,.15)}
 body[data-mode="light"] .sw.on{background:var(--amber)}
 body[data-mode="light"] .setup-hero,body[data-mode="light"] .pill{color:var(--text)}
+body[data-mode="light"] .card h3,body[data-mode="light"] .top h1{color:var(--text)}
 body[data-mode="light"] .focus-name,body[data-mode="light"] .bar-clock{color:var(--text)}
 body[data-mode="light"] .date-line{color:var(--muted)}
 

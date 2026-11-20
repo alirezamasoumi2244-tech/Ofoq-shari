@@ -23,6 +23,9 @@
     keepAwake: on => call('keepAwake', { on: !!on }),
     volume: v => call('volume', { v }),
     vibrate: pat => call('vibrate', { pattern: [].concat(pat).join(',') }),
-    openUrl: url => call('openUrl', { url: url || '' })
+    openUrl: url => call('openUrl', { url: url || '' }),
+    /* تبلیغات تپسل — بنر پایین صفحه اذان (در مرورگر بی‌اثر است) */
+    adsShow: () => call('adsShow'),
+    adsHide: () => call('adsHide')
   };
 })();

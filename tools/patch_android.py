@@ -2,6 +2,20 @@
 """Overlays AzanGo's Kotlin sources onto the Capacitor-generated android/ project. Safe to run repeatedly."""
 import json, os, re, shutil, sys
 
+# ════════════════════════════════════════════════════════════════════════════
+# تبلیغات تپسل — بنر پایین صفحه اذان
+#
+# ✅ شناسه اپلیکیشن (App Key) تپسل از نسخه ۲.۱.۱ وارد شده است؛ دیگر نیازی به
+#    کار دستی نیست. اگر روزی خواستید کلید را عوض کنید، همین خط پایین را ویرایش
+#    کنید و یک‌بار دیگر اجرا کنید:
+#
+#        python3 tools/patch_android.py && npx cap sync android
+#
+#    فضاهای تبلیغاتی (Zone IDs) داخل فایل native/kotlin/AzanAds.kt تنظیم شده‌اند.
+# ════════════════════════════════════════════════════════════════════════════
+TAPSELL_APP_KEY = "mkerkacpddbnttkiceabqptdpissipciqmojhhdkceocgbfkcchppfhpmhlemgafodclej"
+TAPSELL_VERSION = "1.3.0"
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 A = os.path.join(ROOT, "android")
 if not os.path.isdir(A):
@@ -26,7 +40,7 @@ if os.path.isdir(raw_src):
     for f in os.listdir(raw_src):
         shutil.copy2(os.path.join(raw_src, f), os.path.join(raw_dst, f))
 # widget layout + provider info
-for sub in ("layout", "xml", "drawable"):
+for sub in ("layout", "xml"):
     src = os.path.join(ROOT, "native/res", sub)
     if not os.path.isdir(src):
         continue
@@ -49,6 +63,10 @@ if "AzanReceiver" not in m:
     m = m.replace("</application>", comps + "    </application>", 1)
     m = m.replace("</manifest>", perms + "</manifest>", 1)
     m = m.replace("<application", '<application android:supportsRtl="true"', 1) if "supportsRtl" not in m else m
+    open(mp, "w", encoding="utf-8").write(m)
+elif "AD_ID" not in m:
+    # existing project patched before v2.1.0: inject only the new Tapsell permission
+    m = m.replace("</manifest>", '    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />\n</manifest>', 1)
     open(mp, "w", encoding="utf-8").write(m)
 
 # 3) Gradle: enable Kotlin
@@ -138,4 +156,46 @@ if icon_copied:
 else:
     print("Warning: no prebuilt icons found under native/res/mipmap-*")
 
+# 6) Tapsell Mediation SDK — banner ad at the bottom of the azan (home) page.
+#    Adds: manifest placeholder (App Key), SDK dependencies, tapsell maven repo.
+ag = os.path.join(A, "app/build.gradle")
+b = open(ag, encoding="utf-8").read()
+
+if "TapsellMediationAppKey" in b:
+    # از اجرای قبلی placeholder هست — مقدار خالی/قالبی را با کلید واقعی پر کن
+    b = re.sub(r'(TapsellMediationAppKey:\s*")[^"]*("\])',
+               '\\g<1>' + TAPSELL_APP_KEY + '\\2', b, count=1)
+elif "defaultConfig {" in b or "defaultConfig{" in b:
+    b2, n = re.subn(
+        r"(defaultConfig\s*\{)",
+        "\\1\\n        manifestPlaceholders += [TapsellMediationAppKey: \"" + TAPSELL_APP_KEY + "\"]",
+        b, count=1)
+    if n == 0:
+        print("Warning: defaultConfig{} not found in app/build.gradle — add TapsellMediationAppKey placeholder manually.")
+    else:
+        b = b2
+
+# اصلاح گروه SDK (از نسخه ۲.۱.۱): کلاس Tapsell و banner API ها در گروه
+# «ir.tapsell.mediation:tapsell» هستند؛ گروه «ir.tapsell:tapsell» فقط ماژول
+# billboard ویدیوست و کامپایل را می‌شکند. اگر از نسخه قبلی باقی مانده، جایگزین کن.
+b = b.replace('implementation "ir.tapsell:tapsell:' + TAPSELL_VERSION + '"',
+              'implementation "ir.tapsell.mediation:tapsell:' + TAPSELL_VERSION + '"')
+
+if "ir.tapsell.mediation:tapsell" not in b:
+    b += ("\n// Tapsell Mediation SDK (بنر پایین صفحه اذان) — see https://developer.tapsell.ir\n"
+          "dependencies {\n"
+          "    implementation \"ir.tapsell.mediation:tapsell:" + TAPSELL_VERSION + "\"\n"
+          "    implementation \"ir.tapsell.mediation.adapter:legacy:" + TAPSELL_VERSION + "\"\n"
+          "}\n")
+
+# Tapsell maven repository (artifacts are also mirrored on Maven Central, so this
+# is belt-and-suspenders: only inserted when a repositories{} block exists)
+repo_line = "    maven { url 'https://maven.tapsell.ir' }\n"
+if "maven.tapsell.ir" not in b and "repositories {" in b:
+    b = b.replace("repositories {", "repositories {\n" + repo_line, 1)
+
+open(ag, "w", encoding="utf-8").write(b)
+
+print("Tapsell ads applied:", app_id,
+      "(App Key " + ("SET" if TAPSELL_APP_KEY else "EMPTY — paste it into tools/patch_android.py TAPSELL_APP_KEY") + ", SDK ir.tapsell.mediation:tapsell " + TAPSELL_VERSION + ")")
 print("AzanGo native overlay applied for", app_id)

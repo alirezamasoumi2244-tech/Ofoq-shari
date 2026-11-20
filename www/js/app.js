@@ -45,6 +45,7 @@
     volume: 1, pre: 0, offsets: {}, muezzinId: 'afasy', hijriOffset: 1, // +1: islamic-civil often 1 day behind Iranian visual calendar
     muezzins: [{ id: 'afasy', name: 'اذان پیش‌فرض', path: '', file: '' }],
     setupDone: false,
+    obStep: 0,               // onboarding wizard slide (0=city, 1=notifications, 2=battery, 3=azan)
     method: 'tehran',
     fontScale: 1,
     uiMode: 'normal', // normal | elder
@@ -92,7 +93,7 @@
     vibratePre: true,        // vibrate on pre-azan notification
     preOnlyEnabledAzan: true // only pre-notify for azans that are enabled
   };
-  const APP_VERSION = '1.9.0';
+  const APP_VERSION = '2.1.1';
   const METHOD_LABELS = {
     tehran: 'مؤسسه ژئوفیزیک تهران',
     mwl: 'لیگ جهانی مسلمانان',
@@ -112,20 +113,11 @@
     const pat = VIB[kind] || VIB.tap;
     let r = null;
     try { r = await Native.vibrate(pat); } catch (e) { r = null; }
-
-    // Some Android devices report that the native vibrator exists but the
-    // request is not performed. In that case, try the WebView vibration API
-    // too instead of treating { ok: false } as a completed request.
-    if (!r || r.error || r.ok !== true) {
-      try {
-        if (typeof navigator !== 'undefined' && typeof navigator.vibrate === 'function') {
-          const webOk = navigator.vibrate(pat);
-          if (webOk) return { ok: true, has: true, source: 'web' };
-        }
-      } catch (e) {}
+    if (r === null || (r && r.error)) {
+      try { if (navigator.vibrate) return { ok: !!navigator.vibrate(pat), has: true }; } catch (e) {}
+      return { ok: false, has: false };
     }
-    if (r && r.ok === true) return r;
-    return { ok: false, has: !!(r && r.has), native: r || null };
+    return r;
   }
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
@@ -427,8 +419,8 @@
       (back ? '' : '<button class="ibtn" onclick="go(\'settings\')" aria-label="تنظیمات">' + ic('gear') + '</button>') +
       '</header>';
   }
-  function toggle(id, on) {
-    return '<button class="sw' + (on ? ' on' : '') + '" role="switch" aria-checked="' + on + '" data-sw="' + id + '"><span></span></button>';
+  function toggle(id, on, attr) {
+    return '<button class="sw' + (on ? ' on' : '') + '" role="switch" aria-checked="' + !!on + '" data-' + (attr || 'sw') + '="' + id + '"><span></span></button>';
   }
 
   /* ---------- calendar: month grid with Shamsi (big), Gregorian + Hijri (small) and occasions ---------- */
@@ -700,6 +692,8 @@
       '</ul>' +
       '<p class="hint">برنامه کاملاً آفلاین کار می‌کند و هیچ داده‌ای به سرور ارسال نمی‌شود. همه تنظیمات و اطلاعات فقط روی گوشی شما ذخیره می‌گردند.</p>' +
       '<div class="form"><label>اصلاح تاریخ قمری (اگر یک روز عقب/جلو است)<select id="hj">' + [-3,-2,-1,0,1,2,3].map(v => '<option value="' + v + '"' + ((S.hijriOffset != null ? S.hijriOffset : 1) === v ? ' selected' : '') + '>' + (v > 0 ? '+' : '') + fa(v) + ' روز' + (v === 1 ? ' (پیشنهادی)' : '') + '</option>').join('') + '</select></label><p class="hint">تقویم قمری جدولی گاهی یک روز با اعلام رسمی فرق دارد. پیش‌فرض +۱ روز است.</p></div></section>' +
+      '<section class="card"><h3>هشدار — نسخه رسمی</h3>' +
+      '<p class="hint">فقط نسخه رسمی افق شرعی را از استورهای رسمی <b>کافه بازار</b> و <b>مایکت</b> نصب کنید. نسخه‌های غیررسمی ممکن است ویروسی یا دستکاری‌شده باشند و <b>تیم برنامه‌نویسی B-Z هیچ مسئولیتی در قبال نسخه‌های غیررسمی و ویروسی نمی‌پذیرد</b>.</p></section>' +
       '<section class="card"><h3>ما را دنبال کنید</h3>' +
       '<p class="hint" style="margin:0 0 10px">با دنبال کردن صفحهٔ ما در گیت‌هاب، از نسخه‌های جدید زودتر باخبر می‌شوید و با ستاره‌دادن به پروژه، به بهتر شدن افق شرعی کمک می‌کنید.</p>' +
       '<button class="btn wide" id="ghOpen" type="button">⭐ دنبال کردن در گیت‌هاب</button></section>' +
@@ -798,31 +792,36 @@
   function renderQibla() {
     const p = place();
     const degTrue = PT.qibla(p.lat, p.lng);
-    const degMag = PT.qiblaMagnetic ? PT.qiblaMagnetic(p.lat, p.lng) : degTrue;
+    const decl = PT.magneticDeclination ? PT.magneticDeclination(p.lat, p.lng) : 0;
+    const degMag = PT.qiblaMagnetic ? PT.qiblaMagnetic(p.lat, p.lng) : ((degTrue - decl) + 360) % 360;
     const dist = PT.qiblaDistance ? PT.qiblaDistance(p.lat, p.lng) : (S.showKaabaDist !== false ? kaabaDistanceKm(p.lat, p.lng) : null);
-    const degFa = fa(Math.round(degTrue));
+    const degFa = fa(degTrue.toFixed(1));
     const startBrng = degTrue;
+    const basis = S.custom ? 'موقعیت دقیق (GPS)' : 'شهر ' + p.name;
     app.innerHTML = header('قبله‌نما', 'home') +
       '<section class="card qibla-card">' +
+      '<div class="qibla-city">' + ic('pin') + esc(p.name) + '</div>' +
       '<div class="qibla-stage"><div class="qibla-arrow" id="qArrow"></div></div>' +
       '<div class="qibla-deg" id="qLive">' + degFa + '°</div>' +
       '<p class="hint" id="qStatus">در حال اتصال به قطب‌نما… گوشی را صاف و افقی نگه دارید</p>' +
       '<p class="hint" id="qLevel">تراز افقی…</p></section>' +
       '<section class="card">' +
-      '<div class="row"><span>زاویه حقیقی از شمال</span><b>' + degFa + '°</b></div>' +
-      '<div class="row"><span>زاویه مغناطیسی (قطب‌نما)</span><b>' + fa(Math.round(degMag)) + '°</b></div>' +
+      '<div class="row"><span>قبله از شهر ' + esc(p.name) + ' (شمال حقیقی)</span><b>' + degFa + '°</b></div>' +
+      '<div class="row"><span>زاویه قطب‌نما (شمال مغناطیسی)</span><b>' + fa(degMag.toFixed(1)) + '°</b></div>' +
+      '<div class="row"><span>انحراف مغناطیسی (مدل WMM2025)</span><b>' + fa(Math.abs(decl).toFixed(1)) + '° ' + (decl >= 0 ? 'شرقاً' : 'غرباً') + '</b></div>' +
       (dist != null ? '<div class="row"><span>فاصله تا کعبه</span><b>' + fa(dist) + ' کیلومتر</b></div>' : '') +
-      '<div class="row"><span>موقعیت</span><b>' + esc(p.name) + '</b></div></section>' +
+      '<div class="row"><span>مبنای محاسبه</span><b>' + esc(basis) + '</b></div>' +
+      '<div class="row"><span>مختصات</span><b dir="ltr">' + (Math.round(p.lat * 10000) / 10000) + ', ' + (Math.round(p.lng * 10000) / 10000) + '</b></div></section>' +
       '<section class="form">' +
       '<label>کالیبراسیون دستی (درجه)<select id="qOff">' +
       [-10,-8,-6,-4,-2,0,2,4,6,8,10].map(v =>
         '<option value="' + v + '"' + ((S.qiblaOffset||0) === v ? ' selected' : '') + '>' +
         (v > 0 ? '+' : '') + fa(v) + '°</option>').join('') +
       '</select></label>' +
-      '<div class="mi"><span><b>جبران انحراف مغناطیسی</b><small>دقیق‌تر برای ایران</small></span>' +
+      '<div class="mi"><span><b>جبران انحراف مغناطیسی</b><small>مدل جهانی WMM2025 — دقیق در همه شهرها</small></span>' +
       '<button class="sw' + (S.useMagDecl !== false ? ' on' : '') + '" data-magdec="1"></button></div>' +
       '</section>' +
-      '<p class="hint">فلش همیشه به سمت قبله قفل است. وقتی فلش بالا باشد و پیام سبز شود، رو به قبله‌اید. از فلز و آهنربا دور بمانید و گوشی را یک‌بار به شکل عدد ۸ بچرخانید تا قطب‌نما کالیبره شود.</p>';
+      '<p class="hint">زاویه قبله دقیقاً از مختصات شهر شما محاسبه می‌شود؛ برای دقت بیشتر در «تنظیمات ← شهر و موقعیت» می‌توانید موقعیت دقیق GPS را ثبت کنید. فلش همیشه به سمت قبله قفل است. وقتی فلش بالا باشد و پیام سبز شود، رو به قبله‌اید. از فلز و آهنربا دور بمانید و گوشی را یک‌بار به شکل عدد ۸ بچرخانید تا قطب‌نما کالیبره شود.</p>';
     setTimeout(() => startQiblaCompass(startBrng), 50);
   }
   function renderDisplay() {
@@ -872,55 +871,107 @@
   }
   function renderPrivacy() {
     app.innerHTML = header('حریم خصوصی', 'settings') +
-      '<section class="card"><h3>سیاست حفظ حریم خصوصی — افق شرعی</h3>' +
-      '<p>این برنامه <b>هیچ داده‌ای به سرور ارسال نمی‌کند</b>. تمام اطلاعات (شهر، تنظیمات اذان، فایل صوتی انتخابی، اصلاحات) فقط روی دستگاه شما و در حافظه محلی برنامه ذخیره می‌شود.</p>' +
-      '<p>موقعیت GPS فقط وقتی خودتان دکمه «موقعیت فعلی» را بزنید استفاده می‌شود و روی دستگاه می‌ماند؛ به اینترنت یا شخص ثالث فرستاده نمی‌شود.</p>' +
-      '<p>اعلان‌ها و سرویس پخش اذان فقط برای عملکرد برنامه لازم هستند و هیچ آمار یا ردیابی جمع‌آوری نمی‌شود.</p>' +
+      '<section class="card"><h3>' + ic('shield') + ' سیاست حفظ حریم خصوصی — افق شرعی</h3>' +
+      '<p>تمام اطلاعات شخصی شما — شهر، اذان‌های انتخابی، تنظیمات، فایل صوتی، قضاها و ذکرها — <b>صددرصد محلی (لوکال)</b> و فقط در حافظه داخلی همین دستگاه ذخیره می‌شود. هیچ سرور و حساب کاربری وجود ندارد و این داده‌ها هرگز از گوشی شما خارج نمی‌شوند.</p>' +
+      '<p>چون داده‌های شما هیچ‌وقت به هیچ سروری نمی‌رود، <b>احتمال هک شدن و افشای اطلاعات شخصی عملاً به صفر می‌رسد</b>. تنها راه دسترسی به داده‌های شما، دسترسی فیزیکی به خود گوشی است.</p>' +
+      '<p>موقعیت GPS فقط وقتی خودتان دکمه «موقعیت فعلی» را بزنید خوانده می‌شود و همان لحظه روی دستگاه به نزدیک‌ترین شهر تبدیل می‌شود؛ هرگز ذخیره یا ارسال نمی‌شود.</p>' +
+      '<p>اعلان‌ها و سرویس پخش اذان فقط برای عملکرد برنامه لازم هستند و هیچ آمار، آنالیتیکس یا ردیابی از شما جمع‌آوری نمی‌شود.</p>' +
       '<p>فایل‌های صوتی اذان که وارد می‌کنید فقط در حافظه خصوصی برنامه کپی می‌شوند.</p>' +
+      '<p>حذف برنامه، پاک شدن کامل و همیشگی تمام داده‌هاست.</p>' +
+      '</section>' +
+      '<section class="card"><h3>' + ic('info') + ' تبلیغات تپسل و اینترنت</h3>' +
+      '<p>قابلیت‌های اصلی برنامه (اوقات شرعی، اذان، قبله‌نما، تقویم و ابزارها) مثل قبل <b>کاملاً آفلاین</b> کار می‌کنند؛ بدون اینترنت هیچ چیز از دست نمی‌رود.</p>' +
+      '<p>تنها بخش متصل به اینترنت، <b>بنر تبلیغاتی تپسل در پایین صفحه اذان</b> است. این بنر از شبکه تبلیغاتی تپسل بارگذاری می‌شود و ممکن است شبکه تبلیغاتی از «شناسه تبلیغاتی گوگل» (GAID) برای انتخاب تبلیغ متناسب استفاده کند.</p>' +
+      '<p>برنامه هیچ اطلاعات شخصی، مذهبی یا موقعیتی به تپسل نمی‌فرستد؛ تبلیغ فقط یک تصویر است که از اینترنت می‌آید. اگر اینترنت قطع باشد فقط جای تبلیغ خالی می‌ماند و بقیه برنامه بدون مشکل کار می‌کند.</p>' +
+      '</section>' +
+      '<section class="card"><h3>' + ic('info') + ' هشدار مهم — نسخه رسمی</h3>' +
+      '<p>حتماً <b>نسخه رسمی افق شرعی را از استورهای رسمی کافه بازار و مایکت</b> نصب کنید. نصب فایل APK از گروه‌ها، کانال‌ها و سایت‌های ناشناس خطرناک است.</p>' +
+      '<p>نسخه‌های غیررسمی ممکن است دستکاری‌شده، آلوده به ویروس یا دارای کدهای جاسوسی باشند. <b>تیم برنامه‌نویسی B-Z هیچ مسئولیتی در قبال نسخه‌های غیررسمی و ویروسی نمی‌پذیرد</b> و مسئولیت استفاده از آن‌ها کاملاً بر عهده کاربر است.</p>' +
       '</section>';
   }
+  /* ---------- first-run wizard: 4 slides — مکان → اعلان‌ها → باتری → اذان ---------- */
+  const OB_STEPS = ['مکان', 'اعلان‌ها', 'باتری', 'اذان'];
   function renderSetup() {
+    const step = Math.max(0, Math.min(OB_STEPS.length - 1, S.obStep || 0));
     const selected = place();
+    const dots = OB_STEPS.map((n, i) => {
+      const cls = i === step ? ' on' : (i < step ? ' done' : '');
+      const inner = i < step ? ic('check') : fa(i + 1);
+      return '<div class="ob-dot' + cls + '"><span class="ob-dot-c">' + inner + '</span><span class="ob-dot-t">' + n + '</span></div>';
+    }).join('');
+    let stepTitle = '', body = '';
+    if (step === 0) {
+      stepTitle = 'شهر و مکان';
+      body = '<section class="card setup-card"><h3>' + ic('pin') + ' شهر خود را انتخاب کنید</h3>' +
+        '<p class="hint">اوقات شرعی، اذان و قبله دقیقاً بر اساس مختصات همین شهر محاسبه می‌شود. شهر را از فهرست انتخاب کنید یا با GPS نزدیک‌ترین شهر خودکار پیدا شود؛ موقعیت شما فقط روی دستگاه می‌ماند و جایی ارسال نمی‌شود.</p>' +
+        '<input id="cSearch" type="search" placeholder="جستجوی شهر یا استان" autocomplete="off">' +
+        '<div class="setup-city-list" id="cList">' +
+        CITIES.slice().sort((p, q) => p.name.localeCompare(q.name, 'fa')).map(x =>
+          '<button class="mi city' + (!S.custom && S.cityId === x.id ? ' sel' : '') + '" data-city="' + x.id + '" data-search="' + x.name + ' ' + x.prov + '">' +
+          '<span><b>' + x.name + '</b><small>استان ' + x.prov + '</small></span><em>' + (!S.custom && S.cityId === x.id ? ic('check') : '') + '</em></button>'
+        ).join('') + '</div>' +
+        '<p class="hint setup-sel">شهر فعلی: <b>' + esc(selected.name) + '</b></p>' +
+        '<button class="btn alt" id="setupGps">' + ic('gps') + ' تشخیص خودکار شهر با GPS</button>' +
+        '<div id="gpsMsg" class="hint"></div></section>';
+    } else if (step === 1) {
+      stepTitle = 'اعلان‌ها';
+      body = '<section class="card setup-card"><h3>' + ic('bell') + ' اجازه نمایش اعلان</h3>' +
+        '<p class="hint">برای نمایش یادآوری‌ها و پخش مطمئن اذان، اجازه اعلان لازم است. بدون این اجازه، اذان فقط وقتی برنامه باز است پخش می‌شود. اگر پنجره اجازه باز شد، «اجازه دادن» را بزنید.</p>' +
+        '<button class="btn" id="nAsk">' + ic('bell') + ' اجازه نمایش اعلان</button>' +
+        '<div id="st" class="hint">وضعیت اعلان پس از درخواست اینجا نمایش داده می‌شود.</div></section>';
+    } else if (step === 2) {
+      stepTitle = 'باتری';
+      body = '<section class="card setup-card"><h3>' + ic('sound') + ' خارج کردن از محدودیت باتری</h3>' +
+        '<p class="hint">اندروید برای صرفه‌جویی باتری ممکن است سرویس اذان را متوقف کند. با دکمه زیر اجازه دهید افق شرعی بدون محدودیت کار کند تا اذان سر وقت پخش شود.</p>' +
+        '<button class="btn alt" id="nBat">خارج کردن از محدودیت باتری</button>' +
+        '<div id="stBat" class="hint">وضعیت باتری پس از تنظیم اینجا نمایش داده می‌شود.</div>' +
+        '<p class="hint">در گوشی‌های سامسونگ، شیائومی، هواوی و اوپو گزینه «شروع خودکار» را هم در تنظیمات فعال کنید.</p></section>';
+    } else {
+      stepTitle = 'انتخاب اذان‌ها';
+      body = '<section class="card setup-card"><h3>' + ic('bell') + ' چه اذان‌هایی را می‌خواهید؟</h3>' +
+        '<p class="hint">هر اذان را روشن کنید تا در ساعت دقیق خودکار پخش شود. هر وقت خواستید از «تنظیمات ← تنظیمات اذان» می‌توانید تغییرش دهید.</p>' +
+        '<section class="menu">' + AZAN.map(k => '<div class="mi"><span><b>' + NAME[k] + '</b><small>پخش خودکار در وقت شرعی</small></span>' + toggle(k, S.enabled[k], 'obazan') + '</div>').join('') + '</section></section>';
+    }
     app.innerHTML =
       '<section class="hero setup-hero"><div class="pill">' + ic('bell') + ' افق شرعی</div>' +
       '<h1 class="setup-title">خوش آمدید</h1>' +
-      '<p class="setup-desc">برای شروع، شهر خود را انتخاب کنید و دسترسی‌های لازم را بدهید تا اذان در زمان مناسب پخش شود.</p></section>' +
-      '<section class="card setup-card"><h3>' + ic('pin') + ' انتخاب شهر</h3>' +
-      '<input id="cSearch" type="search" placeholder="جستجوی شهر یا استان" autocomplete="off">' +
-      '<div class="setup-city-list" id="cList">' +
-      CITIES.slice().sort((p, q) => p.name.localeCompare(q.name, 'fa')).map(x =>
-        '<button class="mi city' + (!S.custom && S.cityId === x.id ? ' sel' : '') + '" data-city="' + x.id + '" data-search="' + x.name + ' ' + x.prov + '">' +
-        '<span><b>' + x.name + '</b><small>استان ' + x.prov + '</small></span><em>' + (!S.custom && S.cityId === x.id ? ic('check') : '') + '</em></button>'
-      ).join('') + '</div>' +
-      '<p class="hint setup-sel">شهر فعلی: <b>' + esc(selected.name) + '</b></p></section>' +
-      '<section class="card setup-card"><h3>' + ic('bell') + ' دسترسی‌ها</h3>' +
-      '<p class="hint">برای پخش اذان و نمایش اعلان، اجازه اعلان‌ها لازم است. در اولین ورود، اجازه موقعیت (GPS) هم برای تشخیص خودکار نزدیک‌ترین شهر درخواست می‌شود؛ موقعیت فقط روی دستگاه می‌ماند.</p>' +
-      '<button class="btn" id="nAsk">' + ic('bell') + ' اجازه نمایش اعلان</button>' +
-      '<button class="btn alt" id="nBat">خارج کردن از محدودیت باتری</button>' +
-      '<button class="btn alt" id="setupGps">' + ic('pin') + ' تلاش دوباره برای تشخیص شهر با GPS</button>' +
-      '<div id="st" class="hint">وضعیت دسترسی بعد از درخواست نمایش داده می‌شود.</div>' +
-      '<div id="gpsMsg" class="hint"></div></section>' +
-      '<button class="btn wide setup-finish" id="setupDone">شروع استفاده از افق شرعی</button>' +
-      '<p class="hint" style="text-align:center;margin-top:8px">پیش‌فرض: اذان صبح، ظهر و مغرب روشن · یادآوری قبل از اذان خاموش</p>';
-    // به‌روزرسانی وضعیت دسترسی اگر روی گوشی باشیم
+      '<p class="setup-desc">گام ' + fa(step + 1) + ' از ' + fa(OB_STEPS.length) + ' · ' + stepTitle + '</p></section>' +
+      '<div class="ob-dots">' + dots + '</div>' +
+      body +
+      '<div class="ob-nav">' +
+      (step > 0 ? '<button class="btn alt" id="obPrev">' + ic('back') + ' قبلی</button>' : '') +
+      (step < OB_STEPS.length - 1 ? '<button class="btn" id="obNext">بعدی' + ic('chev') + '</button>' : '') +
+      (step === OB_STEPS.length - 1 ? '<button class="btn wide setup-finish" id="setupDone">' + ic('check') + ' شروع استفاده از افق شرعی</button>' : '') +
+      '</div>' +
+      '<p class="hint" style="text-align:center;margin-top:10px">همه داده‌ها فقط روی گوشی شما ذخیره می‌شود؛ برنامه هیچ چیزی به اینترنت ارسال نمی‌کند.</p>';
     if (Native.available()) {
       Native.status().then(s => {
-        const el = document.getElementById('st'); if (!el || !s) return;
-        el.innerHTML = 'اعلان: <b>' + (s.notifications ? 'فعال ✓' : 'غیرفعال') + '</b> · بدون محدودیت باتری: <b>' + (s.ignoringBattery ? 'بله ✓' : 'خیر') + '</b>';
+        if (!s) return;
+        const st = document.getElementById('st');
+        if (st) st.innerHTML = 'اعلان: <b>' + (s.notifications ? 'فعال ✓' : 'غیرفعال') + '</b>';
+        const sb = document.getElementById('stBat');
+        if (sb) sb.innerHTML = 'بدون محدودیت باتری: <b>' + (s.ignoringBattery ? 'بله ✓' : 'خیر') + '</b>' +
+          (s.fullScreen === undefined ? '' : (s.fullScreen ? '' : '<br><button class="btn" id="nFs" style="margin-top:8px">اجازه نمایش روی صفحه قفل</button>'));
       });
-      // درخواست مجوز موقعیت فقط یک‌بار هنگام اولین راه‌اندازی؛ در صورت موافقت، شهر نزدیک خودکار انتخاب می‌شود.
-      if (!setupLocationRequested) {
+      // درخواست مجوز موقعیت فقط یک‌بار در گام اول؛ در صورت موافقت، شهر نزدیک خودکار انتخاب می‌شود.
+      if (step === 0 && !setupLocationRequested) {
         setupLocationRequested = true;
-        Native.askLocation().then(result => {
-          if (!result || !result.granted || !navigator.geolocation) return;
+        const doGps = () => {
+          if (!navigator.geolocation) return;
           navigator.geolocation.getCurrentPosition(pos => {
-            const gpsMsg = document.getElementById('gpsMsg');
-            applyGpsPosition(pos.coords.latitude, pos.coords.longitude, gpsMsg);
+            applyGpsPosition(pos.coords.latitude, pos.coords.longitude, document.getElementById('gpsMsg'));
           }, err => {
             const gpsMsg = document.getElementById('gpsMsg');
             if (gpsMsg) gpsMsg.textContent = 'موقعیت دریافت نشد؛ شهر را دستی انتخاب کنید یا دوباره GPS را امتحان کنید.';
           }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
-        }).catch(() => {});
+        };
+        try {
+          if (Native.askLocation) Native.askLocation().then(result => {
+            if (!result || !result.granted || !navigator.geolocation) return;
+            doGps();
+          }).catch(() => {});
+          else doGps();   // نسخه وب: مرورگر خودش اجازه می‌گیرد
+        } catch (e) { /* ignore */ }
       }
     }
   }
@@ -1138,7 +1189,8 @@ function renderFaq() {
       ['اذان پخش نمی‌شود؟', '۱) اعلان‌ها را در تنظیمات گوشی مجاز کنید. ۲) محدودیت باتری را برای افق شرعی بردارید. ۳) در شیائومی، هواوی و سامسونگ گزینه «شروع خودکار» یا Auto-start را روشن کنید. ۴) برنامه را Force Stop نکنید. ۵) صدای گوشی را چک کنید و حالت بی‌صدا را خاموش کنید.'],
       ['اوقات شرعی چند دقیقه با تقویم رسمی فرق دارد؟', 'روش محاسبه را در تنظیمات عوض کنید (پیش‌فرض: مؤسسه ژئوفیزیک تهران). از «اصلاح دقیقه» برای هر وقت استفاده کنید. ارتفاع محل، افق و جداول رسمی گاهی ۱ تا ۳ دقیقه اختلاف طبیعی دارند.'],
       ['قبله‌نما دقیق نیست یا می‌لرزد؟', 'گوشی را به شکل عدد ۸ در هوا بچرخانید تا قطب‌نما کالیبره شود. از اجسام فلزی، آهنربا و بلندگو دور شوید. موقعیت دقیق‌تر با GPS به‌دست می‌آید. در تنظیمات می‌توانید آفست دستی وارد کنید.'],
-      ['حریم خصوصی چگونه است؟', 'تمام داده‌ها (شهر، تنظیمات، قضاها، ذکرها) فقط روی گوشی شما ذخیره می‌شوند. هیچ سروری، حساب کاربری یا ارسال داده به اینترنت وجود ندارد.'],
+      ['حریم خصوصی چگونه است؟', 'تمام داده‌ها (شهر، تنظیمات، قضاها، ذکرها) فقط روی گوشی شما ذخیره می‌شوند. هیچ سروری، حساب کاربری یا ارسال داده به اینترنت وجود ندارد؛ پس احتمال هک شدن و افشای اطلاعات عملاً صفر است.'],
+      ['نسخه رسمی را از کجا نصب کنم؟', 'حتماً نسخه رسمی افق شرعی را از استورهای رسمی کافه بازار و مایکت نصب کنید. نسخه‌های غیررسمی ممکن است دستکاری‌شده یا آلوده به ویروس باشند و تیم برنامه‌نویسی B-Z هیچ مسئولیتی در قبال نسخه‌های غیررسمی و ویروسی نمی‌پذیرد.'],
       ['چطور شهر را عوض کنم؟', 'از صفحه اصلی روی نام شهر بزنید یا از تنظیمات > شهر و موقعیت. می‌توانید استان را فیلتر کنید، به علاقه‌مندی‌ها اضافه کنید یا با GPS شهر نزدیک را پیدا کنید.'],
       ['روش محاسبه چیست و کدام را انتخاب کنم؟', 'پیش‌فرض برای ایران «مؤسسه ژئوفیزیک دانشگاه تهران» است. روش‌های دیگر مثل MWL، ISNA، مصر، کراچی، ام‌القرى و جعفری هم موجودند. برای ایران معمولاً همان تهران بهترین است.'],
       ['چطور اذان را زودتر یا دیرتر پخش کنم؟', 'در تنظیمات اذان برای هر وقت «اصلاح دقیقه» را تنظیم کنید (مثبت یا منفی). یادآوری قبل از اذان هم جداگانه قابل تنظیم است.'],
@@ -1154,7 +1206,7 @@ function renderFaq() {
       ['چطور تم و اندازه فونت را عوض کنم؟', 'از تنظیمات > نمایش و حالت: اندازه فونت، کنتراست بالا، تم‌های رنگی و حالت سالمندپسند در دسترس است.'],
       ['GPS کار نمی‌کند یا شهر اشتباه پیدا می‌کند؟', 'مجوز موقعیت را بدهید. در فضای باز امتحان کنید. اگر GPS دقیق نبود، شهر را دستی از لیست انتخاب کنید.'],
       ['صدا در حالت بی‌صدا یا Do Not Disturb پخش می‌شود؟', 'بسته به تنظیمات اندروید، اعلان‌های اولویت‌دار ممکن است در DND پخش شوند. حجم اذان را در تنظیمات برنامه و گوشی بررسی کنید.'],
-      ['برنامه اینترنت لازم دارد؟', 'خیر. محاسبه اوقات، اذان، قبله، تقویم، اذکار و همه قابلیت‌های اصلی کاملاً آفلاین هستند. اینترنت فقط برای باز کردن لینک گیت‌هاب در صفحه درباره لازم است.']
+      ['برنامه اینترنت لازم دارد؟', 'محاسبه اوقات، اذان، قبله، تقویم، اذکار و همه قابلیت‌های اصلی کاملاً آفلاین هستند. اینترنت فقط برای بارگذاری بنر تبلیغ تپسل در پایین صفحه اذان لازم است؛ اگر اینترنت نباشد فقط جای تبلیغ خالی می‌ماند و بقیه برنامه بدون مشکل کار می‌کند.']
     ];
     app.innerHTML = header('راهنما و سوالات پرتکرار', 'tools') +
       faqs.map(([q, a]) => '<section class="card"><h3>' + q + '</h3><p class="hint">' + a + '</p></section>').join('');
@@ -1175,6 +1227,17 @@ function renderFaq() {
       const top = ['home', 'times', 'qibla', 'calendar', 'tools'].includes(page) ? page : (TOOLSUB.includes(page) ? 'tools' : '');
       nav.innerHTML = NAV.map(([id, icn, t]) => '<button class="' + (id === top ? 'on' : '') + (id === 'qibla' ? ' mid' : '') + '" onclick="go(\'' + id + '\')"><i>' + icn + '</i>' + t + '</button>').join('');
     }
+    syncAds();
+  }
+
+  /* ---------- تبلیغات تپسل: بنر فقط پایین صفحه اذان (خانه) ----------
+     در بقیه صفحات، حین راه‌اندازی اولیه و روی صفحه پخش اذان، بنر پنهان می‌شود.
+     در نسخه وب (مرورگر) Native.available() برابر false است و کاری انجام نمی‌شود. */
+  function syncAds() {
+    if (!Native.available()) return;
+    const azanOpen = !ov.hidden;
+    if (page === 'home' && S.setupDone && !azanOpen) Native.adsShow();
+    else Native.adsHide();
   }
 
   /* ---------- live tick (GPU-friendly: minimal style writes) ---------- */
@@ -1263,6 +1326,7 @@ function renderFaq() {
     ovClosed = ovKey; ovKey = null; ovDone = false; ov.hidden = true; ov.className = '';
     awake(false); if (stopAudio !== false) Native.stop();
     if (ovHist) { ovHist = false; try { history.back(); } catch (e) {} }
+    syncAds();                                   // بنر تپسل (اگر صفحه خانه باشد) دوباره برمی‌گردد
   }
   window.addEventListener('popstate', e => {
     ovHist = false;
@@ -1308,6 +1372,7 @@ function renderFaq() {
         ovBuild(s, p);
         ov.hidden = false; ov.scrollTop = 0;
         if (!ovHist) { try { history.pushState({ azan: 1 }, ''); ovHist = true; } catch (e) {} }
+        syncAds();                                // روی صفحه پخش اذان، بنر تپسل پنهان شود
       }
       const c = cityNow(p.tz), dt = dates(p);
       g('ovClock').textContent = fa(p2(c.getUTCHours()) + ':' + p2(c.getUTCMinutes()) + ':' + p2(c.getUTCSeconds()));
@@ -1347,8 +1412,17 @@ function renderFaq() {
       if (page === 'setup') return renderSetup();
       return renderCity();
     }
+    if (el.id === 'obNext') { S.obStep = Math.min(OB_STEPS.length - 1, (S.obStep || 0) + 1); save(false); renderSetup(); window.scrollTo(0, 0); return; }
+    if (el.id === 'obPrev') { S.obStep = Math.max(0, (S.obStep || 0) - 1); save(false); renderSetup(); window.scrollTo(0, 0); return; }
+    if (el.dataset.obazan) {
+      const k = el.dataset.obazan;
+      S.enabled[k] = !S.enabled[k];
+      save();
+      return renderSetup();
+    }
     if (el.id === 'setupDone') {
-      S.setupDone = true; save();
+      S.setupDone = true; S.obStep = 0; save();
+      vib('done', true);
       goRoot('home');
       return;
     }

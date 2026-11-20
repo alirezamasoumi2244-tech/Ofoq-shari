@@ -42,4 +42,9 @@ class MainActivity : BridgeActivity() {
         window.clearFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
         super.onStop()
     }
+
+    override fun onDestroy() {
+        try { AzanAds.destroy() } catch (_: Exception) {}
+        super.onDestroy()
+    }
 }

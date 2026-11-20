@@ -206,4 +206,26 @@ class AzanPlugin : Plugin() {
             call.resolve()
         } catch (e: Exception) { call.reject(e.message ?: "openUrl failed") }
     }
+
+    /* ---------- تبلیغات تپسل (فقط پایین صفحه اذان) ---------- */
+
+    /** نمایش بنر تپسل در پایین صفحه — فقط صفحه خانه (اذان) این را صدا می‌زند. */
+    @PluginMethod
+    fun adsShow(call: PluginCall) {
+        try {
+            val wv = try { bridge?.webView } catch (_: Exception) { null }
+            AzanAds.show(activity, wv)
+            call.resolve(JSObject().put("ok", true))
+        } catch (e: Exception) {
+            // هیچ‌وقت نباید رابط کاربری را بترکاند؛ بی‌صدا رد شو
+            call.resolve(JSObject().put("ok", false).put("error", e.message ?: "ads error"))
+        }
+    }
+
+    /** پنهان کردن بنر (بقیه صفحات و صفحه پخش اذان). */
+    @PluginMethod
+    fun adsHide(call: PluginCall) {
+        try { AzanAds.hide() } catch (_: Exception) {}
+        call.resolve()
+    }
 }

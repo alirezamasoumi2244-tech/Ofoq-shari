@@ -121,6 +121,9 @@
       volume: audio ? audio.volume : (cfg.volume || 1) }),
     volume: async v => { if (audio) audio.volume = Math.min(1, Math.max(0.05, +v || 1)); return {}; },
     vibrate: async pat => { try { if (navigator.vibrate) return { ok: navigator.vibrate([].concat(pat)), has: true }; } catch (e) {} return { ok: false, has: false }; },
+    /* تبلیغات تپسل فقط در نسخه اندروید نمایش داده می‌شود؛ در مرورگر بی‌اثر */
+    adsShow: async () => ({}),
+    adsHide: async () => ({}),
     mute: async on => {
       muted = !!on;
       if (audio) audio.muted = muted;
