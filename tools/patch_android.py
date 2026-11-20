@@ -16,6 +16,12 @@ import json, os, re, shutil, sys
 TAPSELL_APP_KEY = "mkerkacpddbnttkiceabqptdpissipciqmojhhdkceocgbfkcchppfhpmhlemgafodclej"
 TAPSELL_VERSION = "1.3.0"
 
+# ابزارهای اندروید — SDK تپسل به androidx.work:2.10.5 وابسته است که compileSdk 35 می‌خواهد؛
+# قالب Capacitor با compileSdk 34 و AGP 8.2.1 می‌آید و بیلد روی checkAarMetadata می‌شکند.
+AGP_VERSION = "8.7.3"     # Android Gradle Plugin — از 8.6 به بالا از compileSdk 35 پشتیبانی می‌کند
+GRADLE_VERSION = "8.9"    # حداقل Gradle لازم برای AGP 8.7
+COMPILE_SDK = 35          # compileSdk لازم برای androidx.work 2.10.5 (targetSdk همان 34 می‌ماند)
+
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 A = os.path.join(ROOT, "android")
 if not os.path.isdir(A):
@@ -198,4 +204,65 @@ open(ag, "w", encoding="utf-8").write(b)
 
 print("Tapsell ads applied:", app_id,
       "(App Key " + ("SET" if TAPSELL_APP_KEY else "EMPTY — paste it into tools/patch_android.py TAPSELL_APP_KEY") + ", SDK ir.tapsell.mediation:tapsell " + TAPSELL_VERSION + ")")
+
+# 7) ارتقای ابزارهای اندروید — برای androidx.work:2.10.5 (وابستگی تپسل) compileSdk 35 لازم است.
+#    AGP/Gradle/compileSdk قالب Capacitor به‌طور خودکار بالا می‌بریم (idempotent).
+def _ver(s):
+    return tuple(int(x) for x in s.split(".") if x.isdigit())
+
+# 7a) Android Gradle Plugin در android/build.gradle
+bg = os.path.join(A, "build.gradle")
+g = open(bg, encoding="utf-8").read()
+mg = re.search(r"com\.android\.tools\.build:gradle:([\d.]+)", g)
+if mg:
+    cur = mg.group(1).rstrip(".")
+    if _ver(cur) < _ver(AGP_VERSION):
+        g = g.replace("com.android.tools.build:gradle:" + cur,
+                      "com.android.tools.build:gradle:" + AGP_VERSION)
+        open(bg, "w", encoding="utf-8").write(g)
+        print("AGP upgraded:", cur, "->", AGP_VERSION)
+    else:
+        print("AGP already", cur)
+else:
+    print("Warning: AGP classpath not found in android/build.gradle — upgrade manually to", AGP_VERSION)
+
+# 7b) Gradle wrapper (gradle-wrapper.properties)
+wp = os.path.join(A, "gradle", "wrapper", "gradle-wrapper.properties")
+if os.path.isfile(wp):
+    w = open(wp, encoding="utf-8").read()
+    mw = re.search(r"gradle-([\d.]+)-(bin|all)\.zip", w)
+    if mw:
+        cur = mw.group(1)
+        if _ver(cur) < _ver(GRADLE_VERSION):
+            w = w.replace("gradle-" + cur + "-" + mw.group(2) + ".zip",
+                          "gradle-" + GRADLE_VERSION + "-" + mw.group(2) + ".zip")
+            open(wp, "w", encoding="utf-8").write(w)
+            print("Gradle wrapper upgraded:", cur, "->", GRADLE_VERSION)
+        else:
+            print("Gradle wrapper already", cur)
+
+# 7c) compileSdkVersion در variables.gradle (قالب Capacitor) یا مستقیماً در app/build.gradle
+vfile = os.path.join(A, "variables.gradle")
+bumped = False
+if os.path.isfile(vfile):
+    v = open(vfile, encoding="utf-8").read()
+    v2 = re.sub(r"(compileSdkVersion\s*:\s*)(\d+)",
+                lambda m: m.group(1) + str(COMPILE_SDK) if int(m.group(2)) < COMPILE_SDK else m.group(0),
+                v)
+    v2 = re.sub(r"(compileSdkVersion\s*=\s*)(\d+)",
+                lambda m: m.group(1) + str(COMPILE_SDK) if int(m.group(2)) < COMPILE_SDK else m.group(0),
+                v2)
+    if v2 != v:
+        open(vfile, "w", encoding="utf-8").write(v2)
+        print("compileSdkVersion bumped to", COMPILE_SDK, "(variables.gradle)")
+        bumped = True
+if not bumped:
+    b = open(ag, encoding="utf-8").read()
+    b2 = re.sub(r"(compileSdk(?:Version)?\s+)(\d+)",
+                lambda m: m.group(1) + str(COMPILE_SDK) if int(m.group(2)) < COMPILE_SDK else m.group(0),
+                b, count=1)
+    if b2 != b:
+        open(ag, "w", encoding="utf-8").write(b2)
+        print("compileSdk bumped to", COMPILE_SDK, "(app/build.gradle)")
+
 print("AzanGo native overlay applied for", app_id)
