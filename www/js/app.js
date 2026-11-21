@@ -93,7 +93,7 @@
     vibratePre: true,        // vibrate on pre-azan notification
     preOnlyEnabledAzan: true // only pre-notify for azans that are enabled
   };
-  const APP_VERSION = '2.2.2';
+  const APP_VERSION = '2.2.3';
   const METHOD_LABELS = {
     tehran: 'مؤسسه ژئوفیزیک تهران',
     mwl: 'لیگ جهانی مسلمانان',
@@ -1255,14 +1255,21 @@ function renderFaq() {
     Native.adsShow();          // فقط یک‌بار راه‌اندازی می‌کند؛ جای تبلیغ‌ها را کد بومی مدیریت می‌کند
     pushAdRects();             // مختصات همین لحظه بفرست تا تبلیغ بی‌درنگ سر جایش بنشیند
   }
-  /* مختصات نقاط تبلیغ برای کد بومی — [چپ، بالا، عرض، ارتفاع] بر حسب پیکسل CSS */
+  /* مختصات نقاط تبلیغ برای کد بومی — [چپ، بالا، عرض، ارتفاع] بر حسب پیکسل فیزیکی
+     (CSS × devicePixelRatio) تا سمت native دیگر نیاز به ضرب در density نداشته باشد. */
   function adRectsJson() {
     function r(id) {
       const el = document.getElementById(id);
       if (!el) return null;
       const b = el.getBoundingClientRect();
       if (b.width < 20 || b.height < 20) return null;
-      return [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)];
+      const dpr = window.devicePixelRatio || 1;
+      return [
+        Math.round(b.left * dpr),
+        Math.round(b.top * dpr),
+        Math.round(b.width * dpr),
+        Math.round(b.height * dpr)
+      ];
     }
     const azan = ov.hidden ? null : r('adSlotAzan');
     const home = (ov.hidden && page === 'home' && S.setupDone) ? r('adSlotHome') : null;

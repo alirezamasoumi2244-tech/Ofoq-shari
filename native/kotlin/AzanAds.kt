@@ -38,7 +38,7 @@ import org.json.JSONObject
 import org.json.JSONTokener
 
 /**
- * تبلیغات تپسل — نسخه ۲.۲.۲ (رفع باگ واحد پیکسل در تشخیص نمایان‌بودن اسلات)
+ * تبلیغات تپسل — نسخه ۲.۲.۳ (مختصات فیزیکی از JS با devicePixelRatio + elevation)
  *
  * چیدمان (طبق درخواست کاربر، از نسخه ۲.۲.۰):
  *   ۱) صفحه اصلی (خانه): **۱ تبلیغ بین اوقات نمازها** — بعد از ردیف «اذان ظهر»
@@ -436,7 +436,10 @@ object AzanAds {
         main.postDelayed({ poll() }, POLL_MS)
     }
 
-    /** هم خروجی evaluateJavascript (JSON داخل کوتیشن) و هم پل مستقیم (JSON خام) را می‌گیرد. */
+    /**
+     * مختصات از JS حالا به پیکسل فیزیکی می‌آید (CSS × devicePixelRatio).
+     * پس دیگر dens را روی r ضرب نمی‌کنیم؛ فقط آفست WebView نسبت به ریشه را اضافه می‌کنیم.
+     */
     private fun applyRects(res: String?) {
         if (!polling) return
         val act = activity ?: return
@@ -456,79 +459,89 @@ object AzanAds {
             Log.w(TAG, "rects parse failed: " + e.message)
         }
 
-        // جابه‌جایی WebView نسبت به ریشهٔ پنجره (نوار وضعیت و …)
+        // آفست WebView نسبت به ریشهٔ content (نوار وضعیت و …) — همه فیزیکی
         val rootLoc = IntArray(2); root.getLocationInWindow(rootLoc)
         val wvLoc = IntArray(2); wv.getLocationInWindow(wvLoc)
         val ox = wvLoc[0] - rootLoc[0]
         val oy = wvLoc[1] - rootLoc[1]
-        val dens = act.resources.displayMetrics.density
         val viewH = wv.height
 
-        place(homeSlot, home, ox, oy, dens, viewH)
-        placeAzanBox(azan, ox, oy, dens, viewH)
+        if (home != null) {
+            Log.d(TAG, "home rect phys=[" + home.joinToString() + "] ox=" + ox + " oy=" + oy + " viewH=" + viewH)
+        }
+        place(homeSlot, home, ox, oy, viewH)
+        placeAzanBox(azan, ox, oy, viewH)
     }
 
-    /** [چپ، بالا، عرض، ارتفاع] → IntArray؛ اگر نامعتبر بود null */
+    /** [چپ، بالا، عرض، ارتفاع] فیزیکی → IntArray؛ اگر نامعتبر بود null */
     private fun rectOf(a: JSONArray?): IntArray? {
         if (a == null || a.length() != 4) return null
         val l = a.optDouble(0)
         val t = a.optDouble(1)
         val w = a.optDouble(2)
         val h = a.optDouble(3)
-        if (w < 20 || h < 20) return null
+        // حداقل ~۲۰dp ≈ ۴۰–۶۰px فیزیکی روی گوشی‌های معمول
+        if (w < 40 || h < 40) return null
         return intArrayOf(Math.round(l).toInt(), Math.round(t).toInt(), Math.round(w).toInt(), Math.round(h).toInt())
     }
 
-    private fun place(s: Slot, r: IntArray?, ox: Int, oy: Int, dens: Float, viewH: Int) {
+    private fun place(s: Slot, r: IntArray?, ox: Int, oy: Int, viewH: Int) {
         val wrap = s.wrap ?: return
-        // r از getBoundingClientRect به پیکسل CSS است؛ oy و viewH فیزیکی‌اند → dens لازم است
-        if (r == null || !onScreen(r, oy, viewH, dens)) {
+        if (r == null || !onScreen(r, viewH)) {
             if (s.visible) { wrap.visibility = android.view.View.GONE; s.visible = false }
             return
         }
-        move(wrap, r, ox, oy, dens)
+        move(wrap, r, ox, oy)
+        if (!s.visible) {
+            wrap.bringToFront()
+            wrap.elevation = 24f
+        }
         s.visible = true
         kick(s)
     }
 
-    private fun placeAzanBox(r: IntArray?, ox: Int, oy: Int, dens: Float, viewH: Int) {
+    private fun placeAzanBox(r: IntArray?, ox: Int, oy: Int, viewH: Int) {
         val box = azanWrap ?: return
-        if (r == null || !onScreen(r, oy, viewH, dens)) {
+        if (r == null || !onScreen(r, viewH)) {
             if (box.visibility != android.view.View.GONE) {
                 box.visibility = android.view.View.GONE
                 for (s in azanSlots) s.visible = false
             }
             return
         }
-        move(box, r, ox, oy, dens)
+        move(box, r, ox, oy)
+        if (box.visibility != android.view.View.VISIBLE) {
+            box.bringToFront()
+            box.elevation = 24f
+        }
         for (s in azanSlots) { s.visible = true; kick(s) }
     }
 
     /**
-     * اسلات باید دست‌کم ۴۵٪ داخل دید باشد تا تبلیغ نشان داده شود (برش نصفه زشت است).
-     * r به پیکسل CSS است (خروجی getBoundingClientRect)، oy و viewH به پیکسل فیزیکی
-     * (getLocationInWindow / WebView.height) — پس قبل از مقایسه، oy و viewH را به CSS تبدیل می‌کنیم.
-     * باگ قبلی: روی دستگاه‌های density>1 (تقریباً همهٔ گوشی‌های امروزی) مقایسه واحدهای مختلف
-     * باعث می‌شد اسلات همیشه «خارج از دید» تشخیص داده شود و تبلیغ هرگز درخواست/نمایش داده نشود.
+     * اسلات باید دست‌کم ۴۵٪ داخل ناحیهٔ قابل‌دید WebView باشد.
+     * r و viewH هر دو پیکسل فیزیکی‌اند (مختصات از JS با devicePixelRatio آمده).
+     * getBoundingClientRect نسبت به viewport است؛ top منفی یعنی اسکرول شده و خارج از دید.
      */
-    private fun onScreen(r: IntArray, oy: Int, viewH: Int, dens: Float): Boolean {
-        val d = if (dens > 0f) dens else 1f
-        val topCss = r[1].toFloat()
-        val bottomCss = (r[1] + r[3]).toFloat()
-        val oyCss = oy / d
-        val viewHCss = viewH / d
-        val visTop = Math.max(topCss, oyCss)
-        val visBottom = Math.min(bottomCss, oyCss + viewHCss)
+    private fun onScreen(r: IntArray, viewH: Int): Boolean {
+        val top = r[1]
+        val bottom = r[1] + r[3]
+        val visTop = Math.max(top, 0)
+        val visBottom = Math.min(bottom, viewH)
         return visBottom - visTop >= r[3] * 0.45f
     }
 
-    private fun move(v: android.view.View, r: IntArray, ox: Int, oy: Int, dens: Float) {
-        val x = Math.round(r[0] * dens) + ox
-        val y = Math.round(r[1] * dens) + oy
-        val w = Math.round(r[2] * dens)
-        val h = Math.round(r[3] * dens)
+    /** r فیزیکی است؛ فقط آفست WebView نسبت به ریشه اضافه می‌شود. */
+    private fun move(v: android.view.View, r: IntArray, ox: Int, oy: Int) {
+        val x = r[0] + ox
+        val y = r[1] + oy
+        val w = r[2]
+        val h = r[3]
         val lp = v.layoutParams
-        if (lp.width != w || lp.height != h) { lp.width = w; lp.height = h; v.layoutParams = lp }
+        if (lp.width != w || lp.height != h) {
+            lp.width = w
+            lp.height = h
+            v.layoutParams = lp
+        }
         if (v.x != x.toFloat()) v.x = x.toFloat()
         if (v.y != y.toFloat()) v.y = y.toFloat()
         if (v.visibility != android.view.View.VISIBLE) v.visibility = android.view.View.VISIBLE
