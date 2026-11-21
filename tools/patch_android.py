@@ -70,10 +70,18 @@ if "AzanReceiver" not in m:
     m = m.replace("</manifest>", perms + "</manifest>", 1)
     m = m.replace("<application", '<application android:supportsRtl="true"', 1) if "supportsRtl" not in m else m
     open(mp, "w", encoding="utf-8").write(m)
-elif "AD_ID" not in m:
-    # existing project patched before v2.1.0: inject only the new Tapsell permission
-    m = m.replace("</manifest>", '    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />\n</manifest>', 1)
-    open(mp, "w", encoding="utf-8").write(m)
+else:
+    # پروژهٔ از قبل پچ‌شده: مجوزهای لازم تپسل را در صورت نبودن اضافه کن
+    extra = ""
+    if "com.google.android.gms.permission.AD_ID" not in m:
+        extra += '    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />\n'
+    if "android.permission.INTERNET" not in m:
+        extra += '    <uses-permission android:name="android.permission.INTERNET" />\n'
+    if "android.permission.ACCESS_NETWORK_STATE" not in m:
+        extra += '    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />\n'
+    if extra:
+        m = m.replace("</manifest>", extra + "</manifest>", 1)
+        open(mp, "w", encoding="utf-8").write(m)
 
 # 2b) کلید تپسل به‌صورت متادیتای مستقیم در مانیفست — علاوه بر manifestPlaceholder.
 #     SDK تپسل کلید را از متادیتای «ir.tapsell.mediation.APPLICATION_KEY» می‌خواند؛

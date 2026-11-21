@@ -38,7 +38,7 @@ import org.json.JSONObject
 import org.json.JSONTokener
 
 /**
- * تبلیغات تپسل — نسخه ۲.۲.۴ (رفع hang شدن SDK init + timeout درخواست)
+ * تبلیغات تپسل — نسخه ۲.۲.۵ (API دوآرگومانی native + timeout کوتاه‌تر + INTERNET)
  *
  * چیدمان (طبق درخواست کاربر، از نسخه ۲.۲.۰):
  *   ۱) صفحه اصلی (خانه): **۱ تبلیغ بین اوقات نمازها** — بعد از ردیف «اذان ظهر»
@@ -608,59 +608,50 @@ object AzanAds {
         Log.d(TAG, "[" + s.name + "] request " + kindName(kind) + " zone " +
                 (s.zoneIdx % s.pool.size + 1) + "/" + s.pool.size + " -> " + zone +
                 " sdkReady=" + sdkReady)
-        // اگر onSuccess/onFailure هرگز نیامد (SDK hang)، بعد از ۱۵ثانیه آزاد کن
-        schedule(s, 15_000L) {
+        // اگر onSuccess/onFailure هرگز نیامد، بعد از ۸ثانیه آزاد کن و نوع/فضا بعدی را امتحان کن
+        schedule(s, 8_000L) {
             if (s.requesting) {
-                Log.w(TAG, "[" + s.name + "] request timeout (15s) — treating as failure")
+                Log.w(TAG, "[" + s.name + "] request timeout (8s) zone=" + zone + " kind=" + kindName(kind))
                 s.requesting = false
-                onFail(s, "timeout — SDK پاسخ نداد (sdkInit=" +
-                        (if (sdkReady) "ready" else "waiting") + ")", zone, known == null, kind)
+                onFail(s, "timeout 8s (sdk=" + (if (sdkReady) "ready" else "waiting") + ")",
+                    zone, known == null, kind)
+            }
+        }
+        // listener را در فیلد نگه می‌داریم تا GC نشود قبل از کالبک
+        val listener = object : RequestResultListener {
+            override fun onSuccess(id: String) {
+                Log.d(TAG, "[" + s.name + "] " + kindName(kind) + " success id=" + id.take(12) + "…")
+                main.post {
+                    cancel(s)
+                    s.requesting = false
+                    zoneKind[zone] = kind
+                    showAd(s, id, kind)
+                }
+            }
+            override fun onFailure(message: String) {
+                Log.w(TAG, "[" + s.name + "] " + kindName(kind) + " failed: " + message)
+                main.post {
+                    cancel(s)
+                    s.requesting = false
+                    onFail(s, message, zone, known == null, kind)
+                }
             }
         }
         try {
             if (kind == Kind.NATIVE) {
-                Tapsell.requestNativeAd(zone, act, object : RequestResultListener {
-                    override fun onSuccess(id: String) {
-                        Log.d(TAG, "[" + s.name + "] native request success (adId=" + id.take(12) + "…)")
-                        main.post {
-                            cancel(s)
-                            s.requesting = false
-                            zoneKind[zone] = Kind.NATIVE
-                            showAd(s, id, Kind.NATIVE)
-                        }
-                    }
-                    override fun onFailure(message: String) {
-                        Log.w(TAG, "[" + s.name + "] native request failed: " + message)
-                        main.post {
-                            cancel(s)
-                            s.requesting = false
-                            onFail(s, message, zone, known == null, Kind.NATIVE)
-                        }
-                    }
-                })
+                // API اصلی تپسل ۱.۳.۰: requestNativeAd(zone, listener)
+                // overload با Activity فقط برای Applovin لازم است
+                try {
+                    Tapsell.requestNativeAd(zone, listener)
+                } catch (e: Throwable) {
+                    Log.w(TAG, "[" + s.name + "] 2-arg native failed, trying with Activity: " + e.message)
+                    Tapsell.requestNativeAd(zone, act, listener)
+                }
             } else {
-                Tapsell.requestBannerAd(zone, BannerSize.BANNER_320_50, object : RequestResultListener {
-                    override fun onSuccess(id: String) {
-                        Log.d(TAG, "[" + s.name + "] banner request success (adId=" + id.take(12) + "…)")
-                        main.post {
-                            cancel(s)
-                            s.requesting = false
-                            zoneKind[zone] = Kind.BANNER
-                            showAd(s, id, Kind.BANNER)
-                        }
-                    }
-                    override fun onFailure(message: String) {
-                        Log.w(TAG, "[" + s.name + "] banner request failed: " + message)
-                        main.post {
-                            cancel(s)
-                            s.requesting = false
-                            onFail(s, message, zone, known == null, Kind.BANNER)
-                        }
-                    }
-                })
+                Tapsell.requestBannerAd(zone, BannerSize.BANNER_320_50, listener)
             }
         } catch (e: Exception) {
-            Log.w(TAG, "[" + s.name + "] request threw: " + e.message)
+            Log.w(TAG, "[" + s.name + "] request threw: " + e.message, e)
             cancel(s)
             s.requesting = false
             onFail(s, e.message ?: "request failed", zone, false, kind)
@@ -823,8 +814,9 @@ object AzanAds {
                 so.put("zone", s.pool[s.zoneIdx % s.pool.size])
                 so.put("requesting", s.requesting)
                 so.put("attempts", s.attempts)
-                s.lastError?.let { so.put("lastError", it) }
-                s.lastKind?.let { so.put("shown", kindName(it)) }
+                so.put("tryBanner", s.tryBanner)
+                so.put("lastError", s.lastError ?: "")
+                so.put("shown", s.lastKind?.let { kindName(it) } ?: "")
                 arr.put(so)
             }
             o.put("slots", arr)
