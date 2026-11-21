@@ -2,6 +2,7 @@ package com.ofoqshari.bz
 
 import android.app.Activity
 import android.graphics.Color
+import android.graphics.drawable.GradientDrawable
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -9,6 +10,7 @@ import android.view.Gravity
 import android.view.ViewGroup
 import android.webkit.WebView
 import android.widget.FrameLayout
+import android.widget.LinearLayout
 import android.widget.TextView
 import ir.tapsell.mediation.MediationInitializationListener
 import ir.tapsell.mediation.Tapsell
@@ -16,31 +18,46 @@ import ir.tapsell.mediation.ad.AdStateListener
 import ir.tapsell.mediation.ad.request.BannerSize
 import ir.tapsell.mediation.ad.request.RequestResultListener
 import ir.tapsell.mediation.ad.views.banner.BannerContainer
+import org.json.JSONArray
+import org.json.JSONObject
+import org.json.JSONTokener
 
 /**
- * تابلوی تبلیغات تپسل (بنر) — فقط در «بخش پایینی صفحه اصلی» (اذان/خانه) نمایش داده می‌شود.
+ * تبلیغات بنری تپسل — نسخه ۲.۲.۰ (چیدمان درون‌محتوایی)
  *
- * کارکرد:
- *  - یک BannerContainer در پایین صفحه (زیر نوار منو، پایین WebView) اضافه می‌شود
- *    و ارتفاع WebView به‌اندازه بنر کم می‌شود تا چیزی پوشانده نشود.
- *  - بین ۵ فضای تبلیغاتی (Zone) که در پنل تپسل ساخته‌اید می‌چرخد:
- *    اگر یک فضا تبلیغی نداشت، به‌طور خودکار فضای بعدی امتحان می‌شود.
- *    فضای جدید «صفحه اصلی» (نسخه ۲.۱.۴) اول لیست است تا اول از همان پر شود.
- *  - هر ۶۰ ثانیه بنر با فضای بعدی تازه‌سازی می‌شود.
- *  - در بقیه صفحات (تنظیمات، قبله، تقویم، …) و روی صفحه پخش اذان، بنر پنهان می‌شود.
- *  - تا وقتی تبلیغی نیامده، یک نوشتهٔ کوچک وضعیت («در انتظار تبلیغ…» یا
- *    «تبلیغی در دسترس نیست») در همان نوار دیده می‌شود تا علت خالی‌بودن جا معلوم باشد.
- *  - همهٔ مراحل در Logcat با تگ «AzanAds» ثبت می‌شود (adb logcat -s AzanAds).
+ * طبق درخواست کاربر، بنرها دیگر نوار ثابت پایین صفحه نیستند؛ هر بنر دقیقاً
+ * روی یک نقطه مشخص از صفحهٔ وب نشانده می‌شود:
  *
- * راه‌اندازی (Initialization): طبق مستندات رسمی تپسل مدیشن، SDK به‌طور پیش‌فرض با
- * ContentProvider هنگام باز شدن برنامه خودش راه‌اندازی می‌شود و کلید را از
- * متادیتای «ir.tapsell.mediation.APPLICATION_KEY» مانیفست می‌خواند (پچ این کلید را
- * هم به‌صورت manifestPlaceholder و هم به‌صورت متادیتای مستقیم در مانیفست می‌نویسد).
- * با setInitializationListener هم لحظهٔ کامل‌شدن راه‌اندازی را ثبت و درخواست معلق را تکرار می‌کنیم.
+ *   ۱) صفحه اصلی (خانه): **۱ بنر بین اوقات نمازها** — بعد از ردیف «اذان ظهر»
+ *      (نقطهٔ HTML: ‎#adSlotHome‎)
+ *   ۲) صفحه پخش اذان: **۴ بنر زیر دکمهٔ «قطع صدا»** (نقطهٔ HTML: ‎#adSlotAzan‎)
+ *
+ * شیوهٔ کار:
+ *  - برنامهٔ وب تابع window.__azanAdRects() را دارد که مختصات دقیق این دو
+ *    نقطه را (پیکسل CSS، نسبت به نمای پنجره) برمی‌گرداند؛ فقط وقتی صفحهٔ
+ *    مربوطه باز است نقطه وجود دارد، پس در بقیه صفحات بنر خودبه‌خود پنهان می‌شود.
+ *  - کد بومی هر ۲۵۰ میلی‌ثانیه این مختصات را می‌خواند، به پیکسل واقعی تبدیل
+ *    می‌کند (×density + جابه‌جایی WebView) و بنر تپسل را دقیقاً روی همان‌جا
+ *    می‌نشاند؛ با اسکرول هم بنر همراه نقطه جابه‌جا می‌شود.
+ *  - بنرها 320×50 هستند؛ در صفحهٔ اذان ۴ اسلات روی هم قرار می‌گیرند و هرکدام
+ *    از یک فضای تبلیغاتی (Zone) جداگانه پر می‌شود.
+ *  - هر اسلات اگر فضایش پر نشد به‌طور خودکار فضاهای بعدی را امتحان می‌کند
+ *    (۲ دور کامل)؛ اگر هیچ‌کدام پر نشد پیام «تبلیغی در دسترس نیست» را نشان
+ *    می‌دهد و ۳۰ ثانیه بعد دوباره تلاش می‌کند. هر ۷۵ ثانیه هم بنر تازه می‌شود.
+ *  - تا وقتی تبلیغ نیامده، نوشتهٔ کوچک وضعیت داخل همان اسلات دیده می‌شود تا
+ *    خالی‌بودن جا معلوم باشد (فقط وقتی اینترنت قطع است یا نوع فضا بنر نیست).
+ *  - همهٔ مراحل در Logcat با تگ «AzanAds» ثبت می‌شود: adb logcat -s AzanAds
+ *
+ * راه‌اندازی (Initialization): SDK تپسل مدیشن ۱.۳.۰ با ContentProvider هنگام
+ * باز شدن برنامه خودش راه‌اندازی می‌شود و کلید را از متادیتای
+ * «ir.tapsell.mediation.APPLICATION_KEY» مانیفست می‌خواند (پچ این کلید را هم
+ * به‌صورت manifestPlaceholder و هم متادیتای مستقیم می‌نویسد). با
+ * setInitializationListener لحظهٔ کامل‌شدن راه‌اندازی را ثبت می‌کنیم تا
+ * درخواست‌های رد‌شدهٔ قبل از راه‌اندازی دوباره تکرار شوند.
  *
  * مبنای فنی: Tapsell Mediation SDK نسخه ۱.۳.۰
  * (ir.tapsell.mediation:tapsell + ir.tapsell.mediation.adapter:legacy).
- * امضاهای متدها با بایت‌کد AAR نسخه ۱.۳.۰ در Maven Central اعتبارسنجی شده است:
+ * امضاهای متدها با بایت‌کد AAR نسخه ۱.۳.۰ اعتبارسنجی شده است:
  *   requestBannerAd(zone, BannerSize, RequestResultListener)
  *   showBannerAd(adId, BannerContainer, Activity, AdStateListener.Banner)
  *   destroyBannerAd(adId)
@@ -50,39 +67,405 @@ object AzanAds {
 
     private const val TAG = "AzanAds"
 
-    /* فضاهای تبلیغاتی تپسل — بنر پایین صفحه اصلی (اذان/خانه).
-     * فضای اول (6b010ebfaeabeb750feb8f6f) فضای جدید «صفحه اصلی» است و چرخش
-     * از آن شروع می‌شود؛ اگر پر نشد به‌طور خودکار سراغ ۴ فضای بعدی می‌رود. */
-    private val ZONES = arrayOf(
-        "6b010ebfaeabeb750feb8f6f",
+    /* فضاهای تبلیغاتی تپسل — ۵ فضا:
+     * فضای «صفحه اصلی» (6b010ebf…) بنر بین اوقات نمازها را می‌گیرد
+     * و ۴ فضای دیگر، ۴ بنر زیر «قطع صدا» را. اگر فضایی پر نشد، همان اسلات
+     * به‌طور خودکار از بقیه فضاها هم امتحان می‌کند. */
+    private const val HOME_ZONE = "6b010ebfaeabeb750feb8f6f"
+    private val AZAN_ZONES = arrayOf(
         "6b0071167597d07cbabd6e9e",
         "6b00715f728e2256843b0caf",
         "6b007174728e2256843b0cb0",
         "6b0071897597d07cbabd6e9f"
     )
+    private val ALL_ZONES: Array<String> = arrayOf(HOME_ZONE) + AZAN_ZONES
 
-    /* اندازه بنر استاندارد 320×50 */
-    private const val BANNER_H_DP = 50
-    private const val REFRESH_MS = 60_000L     // تازه‌سازی هر ۶۰ ثانیه
-    private const val RETRY_MS = 30_000L       // اگر هیچ فضایی پر نشد، ۳۰ ثانیه بعد دوباره
+    private const val BANNER_H_DP = 50        // بنر استاندارد 320×50
+    private const val POLL_MS = 250L          // هر چند میلی‌ثانیه جای اسلات خوانده شود
+    private const val REFRESH_MS = 75_000L    // تازه‌سازی بنر هر ۷۵ ثانیه
+    private const val RETRY_MS = 30_000L      // اگر هیچ فضایی پر نشد، ۳۰ ثانیه بعد دوباره
+    private const val ZONE_STEP_MS = 800L     // فاصلهٔ کوتاه بین امتحان فضاها
+
+    private const val JS_RECTS =
+        "window.__azanAdRects ? window.__azanAdRects() : 'null'"
+
+    /** یک جای بنر (اسلات): وضعیت درخواست، بنر نمایش‌داده‌شده و نگاه‌دارنده‌های نمایشی */
+    private class Slot(val name: String, firstZone: String) {
+        val pool: List<String> =
+            listOf(firstZone) + ALL_ZONES.filter { it != firstZone }
+        var zoneIdx = 0            // فضای جاری در pool
+        var attempts = 0           // تعداد تلاش‌های پیاپی ناموفق
+        var requesting = false     // درخواست در راه است
+        var adId: String? = null   // تبلیغِ در حال نمایش (یا تازه دریافت‌شده)
+        var pendingId: String? = null // تبلیغ رسیده ولی اسلات هنوز نمایان نشده
+        var visible = false        // آخرین وضعیت نمایان‌بودن اسلات
+        var wrap: FrameLayout? = null
+        var status: TextView? = null
+        var banner: BannerContainer? = null
+        var pending: Runnable? = null
+    }
 
     private val main: Handler = Handler(Looper.getMainLooper())
-    private var container: FrameLayout? = null   // نوار پایین (نگهدارنده بنر)
-    private var status: TextView? = null         // نوشتهٔ وضعیت تا قبل از اولین تبلیغ
-    private var banner: BannerContainer? = null
     private var activity: Activity? = null
     private var webView: WebView? = null
+    private var attached = false
 
-    private var showing = false          // درخواست نمایش از سمت UI فعال است
-    private var attached = false         // container به پنجره چسبیده است
-    private var adId: String? = null     // تبلیغِ در حال نمایش
-    private var zoneIdx = 0
-    private var attempts = 0
-    private var pending: Runnable? = null
-    private var initListenerSet = false  // listener راه‌اندازی فقط یک‌بار ست می‌شود
-    private var initialized = false      // SDK تپسل راه‌اندازی شده است
+    private var homeSlot = Slot("home", HOME_ZONE)          // ۱ بنر بین اوقات
+    private var azanSlots = listOf(                          // ۴ بنر زیر «قطع صدا»
+        Slot("azan1", AZAN_ZONES[0]),
+        Slot("azan2", AZAN_ZONES[1]),
+        Slot("azan3", AZAN_ZONES[2]),
+        Slot("azan4", AZAN_ZONES[3])
+    )
+    private var azanWrap: LinearLayout? = null
+    private var allSlots: List<Slot> = listOf(homeSlot) + azanSlots
+
+    private var polling = false
+    private var initListenerSet = false
 
     private var appKey: String? = null   // از متادیتای مانیفست خوانده می‌شود
+
+    /* ---------- API عمومی (AzanPlugin) ---------- */
+
+    /** راه‌اندازی؛ از صفحهٔ وب با adsShow صدا زده می‌شود. کاملاً idempotent است. */
+    fun show(act: Activity, wv: WebView?) {
+        activity = act
+        webView = wv ?: findWebView(act)
+        Log.d(TAG, "show() on " + act.javaClass.simpleName +
+                ", hasWebView=" + (webView != null))
+        ensureViews(act)
+        if (!polling) {
+            polling = true
+            main.postDelayed({ poll() }, POLL_MS)
+            Log.d(TAG, "position poller started (" + POLL_MS + "ms)")
+        }
+    }
+
+    /** دیگر استفاده نمی‌شود (بنرها خودشان جای خود را پیدا می‌کنند)؛ برای سازگاری نگه داشته شد. */
+    fun hide() {
+        Log.d(TAG, "hide() is a no-op since v2.2.0 (slots are DOM-driven)")
+    }
+
+    /** آزاد کردن همهٔ منابع (بسته شدن برنامه) */
+    fun destroy() {
+        polling = false
+        attached = false
+        for (s in allSlots) {
+            cancel(s)
+            s.adId?.let { destroyAd(it) }
+            s.adId = null
+            s.pendingId = null
+            s.wrap = null
+            s.status = null
+            s.banner = null
+            s.visible = false
+            s.requesting = false
+        }
+        azanWrap = null
+        webView = null
+        activity = null
+        Log.d(TAG, "destroyed")
+    }
+
+    /* ---------- ساخت نماها ---------- */
+
+    private fun ensureViews(act: Activity) {
+        if (attached) return
+        val root = act.findViewById<ViewGroup>(android.R.id.content) ?: return
+        val dens = act.resources.displayMetrics.density
+
+        // اسلات صفحهٔ اصلی — مستقیم روی ریشهٔ پنجره، با مختصات مطلق
+        val hs = FrameLayout(act)
+        hs.layoutParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        hs.visibility = android.view.View.GONE
+        fillSlot(act, hs, homeSlot, dens)
+        root.addView(hs)
+        homeSlot.wrap = hs
+
+        // جعبهٔ ۴ بنری صفحهٔ اذان — ستون عمودی، هر اسلات وزن برابر
+        val box = LinearLayout(act)
+        box.orientation = LinearLayout.VERTICAL
+        box.layoutParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT)
+        box.visibility = android.view.View.GONE
+        for (s in azanSlots) {
+            val cell = FrameLayout(act)
+            cell.layoutParams = LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f)
+            fillSlot(act, cell, s, dens)
+            box.addView(cell)
+            s.wrap = cell
+        }
+        root.addView(box)
+        azanWrap = box
+        attached = true
+        Log.d(TAG, "ad views attached (1 home slot + 4 azan slots)")
+    }
+
+    /** داخل هر اسلات: نوشتهٔ وضعیت + BannerContainer وسط‌چین + پس‌زمینهٔ گرد */
+    private fun fillSlot(act: Activity, cell: FrameLayout, s: Slot, dens: Float) {
+        val bg = GradientDrawable()
+        bg.setColor(Color.argb(235, 36, 28, 20))           // #241C14 مثل کارت‌های برنامه
+        bg.cornerRadius = 14f * dens
+        bg.setStroke(Math.max(1, Math.round(1f * dens)), Color.argb(60, 232, 184, 109))
+        cell.background = bg
+
+        val tv = TextView(act)
+        tv.layoutParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER)
+        tv.text = "در انتظار تبلیغ…"
+        tv.textSize = 11f
+        tv.setTextColor(Color.argb(150, 255, 255, 255))
+        tv.gravity = Gravity.CENTER
+        cell.addView(tv)
+
+        val bc = BannerContainer(act)
+        bc.layoutParams = FrameLayout.LayoutParams(
+            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT, Gravity.CENTER)
+        cell.addView(bc)
+
+        s.status = tv
+        s.banner = bc
+    }
+
+    /* ---------- خواندن جای اسلات‌ها از WebView ---------- */
+
+    private fun poll() {
+        if (!polling) return
+        val act = activity
+        val wv = webView
+        if (act == null || wv == null || act.isFinishing) {
+            main.postDelayed({ poll() }, POLL_MS)
+            return
+        }
+        try {
+            wv.evaluateJavascript(JS_RECTS) { res -> applyRects(res) }
+        } catch (e: Exception) {
+            Log.w(TAG, "evaluateJavascript failed: " + e.message)
+        }
+        main.postDelayed({ poll() }, POLL_MS)
+    }
+
+    private fun applyRects(res: String?) {
+        if (!polling) return
+        val act = activity ?: return
+        val wv = webView ?: return
+        val root = act.findViewById<ViewGroup>(android.R.id.content) ?: return
+
+        var home: IntArray? = null
+        var azan: IntArray? = null
+        try {
+            var v: Any? = JSONTokener(res ?: "null").nextValue()
+            if (v is String) v = JSONTokener(v).nextValue()
+            if (v is JSONObject) {
+                home = rectOf(v.optJSONArray("home"))
+                azan = rectOf(v.optJSONArray("azan"))
+            }
+        } catch (e: Exception) {
+            Log.w(TAG, "rects parse failed: " + e.message)
+        }
+
+        // جابه‌جایی WebView نسبت به ریشهٔ پنجره (نوار وضعیت و …)
+        val rootLoc = IntArray(2); root.getLocationInWindow(rootLoc)
+        val wvLoc = IntArray(2); wv.getLocationInWindow(wvLoc)
+        val ox = wvLoc[0] - rootLoc[0]
+        val oy = wvLoc[1] - rootLoc[1]
+        val dens = act.resources.displayMetrics.density
+        val viewH = wv.height
+
+        place(homeSlot, home, ox, oy, dens, viewH)
+        placeAzanBox(azan, ox, oy, dens, viewH)
+    }
+
+    /** [چپ، بالا، عرض، ارتفاع] → IntArray؛ اگر نامعتبر بود null */
+    private fun rectOf(a: JSONArray?): IntArray? {
+        if (a == null || a.length() != 4) return null
+        val l = a.optDouble(0)
+        val t = a.optDouble(1)
+        val w = a.optDouble(2)
+        val h = a.optDouble(3)
+        if (w < 20 || h < 20) return null
+        return intArrayOf(Math.round(l).toInt(), Math.round(t).toInt(), Math.round(w).toInt(), Math.round(h).toInt())
+    }
+
+    private fun place(s: Slot, r: IntArray?, ox: Int, oy: Int, dens: Float, viewH: Int) {
+        val wrap = s.wrap ?: return
+        if (r == null || !onScreen(r, oy, viewH)) {
+            if (s.visible) { wrap.visibility = android.view.View.GONE; s.visible = false }
+            return
+        }
+        move(wrap, r, ox, oy, dens)
+        s.visible = true
+        kick(s)
+    }
+
+    private fun placeAzanBox(r: IntArray?, ox: Int, oy: Int, dens: Float, viewH: Int) {
+        val box = azanWrap ?: return
+        if (r == null || !onScreen(r, oy, viewH)) {
+            if (box.visibility != android.view.View.GONE) {
+                box.visibility = android.view.View.GONE
+                for (s in azanSlots) s.visible = false
+            }
+            return
+        }
+        move(box, r, ox, oy, dens)
+        for (s in azanSlots) { s.visible = true; kick(s) }
+    }
+
+    /** اسلات باید دست‌کم ۴۵٪ داخل دید باشد تا بنر نشان داده شود (برش نصفه‌بنر زشت است) */
+    private fun onScreen(r: IntArray, oy: Int, viewH: Int): Boolean {
+        val top = r[1]; val bottom = r[1] + r[3]
+        val visTop = Math.max(top, oy)
+        val visBottom = Math.min(bottom, oy + viewH)
+        return visBottom - visTop >= r[3] * 0.45f
+    }
+
+    private fun move(v: android.view.View, r: IntArray, ox: Int, oy: Int, dens: Float) {
+        val x = Math.round(r[0] * dens) + ox
+        val y = Math.round(r[1] * dens) + oy
+        val w = Math.round(r[2] * dens)
+        val h = Math.round(r[3] * dens)
+        val lp = v.layoutParams
+        if (lp.width != w || lp.height != h) { lp.width = w; lp.height = h; v.layoutParams = lp }
+        if (v.x != x.toFloat()) v.x = x.toFloat()
+        if (v.y != y.toFloat()) v.y = y.toFloat()
+        if (v.visibility != android.view.View.VISIBLE) v.visibility = android.view.View.VISIBLE
+    }
+
+    /* ---------- چرخهٔ درخواست/نمایش هر اسلات ---------- */
+
+    /** اگر اسلات نمایان است و تبلیغی ندارد، درخواست بده */
+    private fun kick(s: Slot) {
+        if (!s.visible) return
+        val pid = s.pendingId
+        if (pid != null) { s.pendingId = null; showAd(s, pid); return }
+        if (s.requesting || s.adId != null) return
+        if (key() == null) {
+            setStatus(s, "کلید تبلیغ در برنامه ثبت نشده")   // اشکال بیلد، نه اینترنت
+            return
+        }
+        watchInitialization()
+        request(s)
+    }
+
+    private fun request(s: Slot) {
+        if (s.requesting) return
+        val act = activity ?: return
+        val zone = s.pool[s.zoneIdx % s.pool.size]
+        s.requesting = true
+        setStatus(s, "در انتظار تبلیغ…")
+        Log.d(TAG, "[" + s.name + "] request zone " + (s.zoneIdx % s.pool.size + 1) + "/" +
+                s.pool.size + " -> " + zone)
+        try {
+            Tapsell.requestBannerAd(zone, BannerSize.BANNER_320_50, object : RequestResultListener {
+                override fun onSuccess(id: String) {
+                    Log.d(TAG, "[" + s.name + "] request success (adId=" + id.take(12) + "…)")
+                    main.post { s.requesting = false; showAd(s, id) }
+                }
+                override fun onFailure(message: String) {
+                    Log.w(TAG, "[" + s.name + "] request failed: " + message)
+                    main.post { s.requesting = false; onFail(s, message) }
+                }
+            })
+        } catch (e: Exception) {
+            Log.w(TAG, "[" + s.name + "] request threw: " + e.message)
+            s.requesting = false
+            onFail(s, e.message ?: "request failed")
+        }
+    }
+
+    private fun showAd(s: Slot, id: String) {
+        val act = activity ?: return
+        val bc = s.banner ?: return
+        if (!s.visible) {                       // اسلات هنوز روی صفحه نیست؛ بعداً نمایش بده
+            s.pendingId = id
+            Log.d(TAG, "[" + s.name + "] ad queued until slot visible")
+            return
+        }
+        val old = s.adId
+        if (old != null && old != id) destroyAd(old)
+        s.adId = id
+        try {
+            bc.removeAllViews()
+            Tapsell.showBannerAd(id, bc, act, object : AdStateListener.Banner {
+                override fun onAdImpression() {
+                    main.post {
+                        Log.d(TAG, "[" + s.name + "] banner impression")
+                        setStatus(s, null)      // نوشتهٔ وضعیت برداشته شود
+                        scheduleRefresh(s)
+                    }
+                }
+                override fun onAdClicked() { Log.d(TAG, "[" + s.name + "] banner clicked") }
+                override fun onAdFailed(message: String) {
+                    Log.w(TAG, "[" + s.name + "] banner show failed: " + message)
+                    main.post { s.adId = null; onFail(s, message) }
+                }
+            })
+        } catch (e: Exception) {
+            Log.w(TAG, "[" + s.name + "] show threw: " + e.message)
+            s.adId = null
+            onFail(s, e.message ?: "show failed")
+        }
+    }
+
+    private fun onFail(s: Slot, msg: String) {
+        if (s.adId != null) {                   // بنر قبلی هنوز نمایش داده می‌شود؛ تازه‌سازی بعداً
+            Log.d(TAG, "[" + s.name + "] keep current banner, retry later")
+            schedule(s, REFRESH_MS) { if (s.visible) request(s) }
+            return
+        }
+        s.attempts++
+        s.zoneIdx++
+        if (s.attempts <= s.pool.size * 2) {    // همهٔ فضاها را امتحان کن (۲ دور)
+            schedule(s, ZONE_STEP_MS) { if (s.visible) request(s) }
+        } else {
+            setStatus(s, "تبلیغی در دسترس نیست")  // هیچ فضایی پر نشد؛ پیام وضعیت
+            s.attempts = 0
+            Log.w(TAG, "[" + s.name + "] all zones failed, retry in " + RETRY_MS / 1000 + "s")
+            schedule(s, RETRY_MS) { if (s.visible) request(s) }
+        }
+    }
+
+    /** هر ۷۵ ثانیه بنر همان فضا تازه می‌شود؛ اگر فضا پر نشد خودش سراغ بعدی می‌رود */
+    private fun scheduleRefresh(s: Slot) {
+        schedule(s, REFRESH_MS) {
+            if (!s.visible || s.requesting) return@schedule
+            s.attempts = 0
+            Log.d(TAG, "[" + s.name + "] refresh banner")
+            request(s)
+        }
+    }
+
+    private fun setStatus(s: Slot, text: String?) {
+        val tv = s.status ?: return
+        if (text == null) {
+            tv.visibility = android.view.View.GONE
+        } else {
+            tv.text = text
+            tv.visibility = android.view.View.VISIBLE
+        }
+    }
+
+    private fun schedule(s: Slot, ms: Long, r: Runnable) {
+        cancel(s)
+        s.pending = r
+        main.postDelayed(r, ms)
+    }
+
+    private fun cancel(s: Slot) {
+        s.pending?.let { main.removeCallbacks(it) }
+        s.pending = null
+    }
+
+    private fun destroyAd(id: String) {
+        try {
+            Tapsell.destroyBannerAd(id)
+            Log.d(TAG, "banner destroyed")
+        } catch (e: Exception) { Log.w(TAG, "destroy threw: " + e.message) }
+    }
+
+    /* ---------- راه‌اندازی SDK و کلید ---------- */
 
     /** خواندن App Key از متادیتای مانیفست (patch_android.py این مقدار را می‌نویسد). */
     private fun key(): String? {
@@ -93,10 +476,10 @@ object AzanAds {
             val raw = ai?.metaData?.getString("ir.tapsell.mediation.APPLICATION_KEY")
             raw?.trim()?.takeIf { it.isNotEmpty() && it != "PUT_TAPSELL_APP_KEY_HERE" }
         } catch (e: Exception) {
-            Log.w(TAG, "read app key failed: ${e.message}")
+            Log.w(TAG, "read app key failed: " + e.message)
             null
         }
-        Log.d(TAG, "app key present: ${appKey != null}")
+        Log.d(TAG, "app key present: " + (appKey != null))
         return appKey
     }
 
@@ -108,239 +491,24 @@ object AzanAds {
         try {
             Tapsell.setInitializationListener(object : MediationInitializationListener {
                 override fun onInitializationComplete() {
-                    initialized = true
                     Log.d(TAG, "Tapsell SDK initialization complete")
                     main.post {
-                        if (showing && adId == null && banner != null) requestNextZone()
+                        for (s in allSlots) kick(s)     // درخواست‌های معلق دوباره تلاش شوند
                     }
                 }
             })
             Log.d(TAG, "initialization listener set")
         } catch (e: Exception) {
-            Log.w(TAG, "setInitializationListener failed: ${e.message}")
+            Log.w(TAG, "setInitializationListener failed: " + e.message)
         }
     }
 
-    /** نمایش بنر در پایین صفحه (فقط صفحه اصلی/اذان این را صدا می‌زند) */
-    fun show(act: Activity, wv: WebView?) {
-        activity = act
-        webView = wv ?: findWebView(act)
-        Log.d(TAG, "show() on " + act.javaClass.simpleName + ", hasWebView=" + (webView != null))
-        if (!showing) {
-            showing = true
-            attempts = 0
-            attach(act)
-            if (key() == null) {
-                setStatus("کلید تبلیغ در برنامه ثبت نشده")   // اشکال بیلد، نه اینترنت
-                return
-            }
-            watchInitialization()
-            setStatus("در انتظار تبلیغ…")
-            requestNextZone()
-        } else if (attached && container?.visibility != android.view.View.VISIBLE) {
-            attach(act)                     // بعد از برگشتن از صفحه دیگر دوباره وصل کن
-        }
-    }
-
-    /** پنهان کردن بنر (بقیه صفحات) */
-    fun hide() {
-        showing = false
-        cancelPending()
-        val act = activity ?: return
-        if (!attached) return
-        act.runOnUiThread {
-            setWebMargin(0)
-            container?.visibility = android.view.View.GONE
-            destroyAd()
-            // بنر را از پنجره جدا می‌کنیم تا در صفحات دیگر منابع نگه ندارد
-            detach(act)
-        }
-    }
-
-    /** آزاد کردن همه منابع (بسته شدن برنامه) */
-    fun destroy() {
-        showing = false
-        attached = false
-        cancelPending()
-        destroyAd()
-        container = null
-        status = null
-        banner = null
-        webView = null
-        activity = null
-    }
-
-    /* ---------- داخلی ---------- */
-
-    private fun attach(act: Activity) {
-        if (attached) {
-            container?.visibility = android.view.View.VISIBLE
-            setWebMargin(dp(act, BANNER_H_DP))
-            return
-        }
-        val root = act.findViewById<ViewGroup>(android.R.id.content) ?: return
-        val bar = FrameLayout(act)
-        bar.layoutParams = FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, dp(act, BANNER_H_DP), Gravity.BOTTOM or Gravity.CENTER_HORIZONTAL)
-        bar.setBackgroundColor(Color.TRANSPARENT)
-
-        // نوشتهٔ وضعیت — تا وقتی هیچ تبلیغی نمایش داده نشده، جای خالی بنر را توضیح می‌دهد
-        val tv = TextView(act)
-        tv.layoutParams = FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT, Gravity.CENTER)
-        tv.text = "در انتظار تبلیغ…"
-        tv.textSize = 11f
-        tv.setTextColor(Color.argb(150, 255, 255, 255))
-        tv.gravity = Gravity.CENTER
-        bar.addView(tv)
-
-        val bc = BannerContainer(act)
-        bc.layoutParams = FrameLayout.LayoutParams(
-            ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT,
-            Gravity.CENTER)
-        bar.addView(bc)
-        bar.visibility = if (showing) android.view.View.VISIBLE else android.view.View.GONE
-
-        root.addView(bar)
-        container = bar
-        status = tv
-        banner = bc
-        attached = true
-        // از همین لحظه جا رزرو می‌شود تا نوشتهٔ وضعیت روی نوار منو نیفتد
-        setWebMargin(dp(act, BANNER_H_DP))
-    }
-
-    private fun detach(act: Activity) {
-        container?.let { (it.parent as? ViewGroup)?.removeView(it) }
-        container = null
-        status = null
-        banner = null
-        attached = false
-        setWebMargin(0)
-    }
-
-    private fun requestNextZone() {
-        if (!showing || banner == null) return
-        val zone = ZONES[zoneIdx % ZONES.size]
-        val act = activity ?: return
-        Log.d(TAG, "request banner zone " + (zoneIdx % ZONES.size + 1) + "/" + ZONES.size + " -> " + zone)
-        try {
-            Tapsell.requestBannerAd(zone, BannerSize.BANNER_320_50, object : RequestResultListener {
-                override fun onSuccess(id: String) {
-                    Log.d(TAG, "request success (adId=" + id.take(12) + "…)")
-                    main.post { showAd(act, id) }
-                }
-                override fun onFailure(message: String) {
-                    Log.w(TAG, "request failed: " + message)
-                    main.post { onFail(message) }
-                }
-            })
-        } catch (e: Exception) {
-            Log.w(TAG, "request threw: " + e.message)
-            onFail(e.message ?: "request failed")
-        }
-    }
-
-    private fun showAd(act: Activity, id: String) {
-        val bc = banner ?: return
-        if (!showing) return
-        destroyAd()
-        adId = id
-        try {
-            Tapsell.showBannerAd(id, bc, act, object : AdStateListener.Banner {
-                override fun onAdImpression() {
-                    main.post {
-                        Log.d(TAG, "banner impression")
-                        setStatus(null)                       // نوشتهٔ وضعیت برداشته شود
-                        setWebMargin(dp(act, BANNER_H_DP))
-                        scheduleRefresh()
-                    }
-                }
-                override fun onAdClicked() { Log.d(TAG, "banner clicked") }
-                override fun onAdFailed(message: String) {
-                    Log.w(TAG, "banner show failed: " + message)
-                    main.post { onFail(message) }
-                }
-            })
-        } catch (e: Exception) {
-            Log.w(TAG, "show threw: " + e.message)
-            onFail(e.message ?: "show failed")
-        }
-    }
-
-    private fun onFail(msg: String) {
-        if (!showing) return
-        attempts++
-        zoneIdx++
-        if (attempts <= ZONES.size * 2) {          // همه فضاها را امتحان کن (۲ دور)
-            requestNextZone()
-        } else {
-            setStatus("تبلیغی در دسترس نیست")       // هیچ فضایی پر نشد؛ پیام وضعیت
-            attempts = 0                           // بعداً دوباره
-            schedule(RETRY_MS) { requestNextZone() }
-        }
-    }
-
-    /** نوشتهٔ وضعیت نوار بنر؛ با null مخفی می‌شود (وقتی تبلیغ واقعی نمایش داده شد) */
-    private fun setStatus(text: String?) {
-        main.post {
-            val tv = status ?: return@post
-            if (text == null) {
-                tv.visibility = android.view.View.GONE
-            } else {
-                tv.text = text
-                tv.visibility = android.view.View.VISIBLE
-            }
-        }
-    }
-
-    /** هر ۶۰ ثانیه: فضای بعدی، تبلیغ جدید؛ روی موفقیت، قبلی نابود می‌شود */
-    private fun scheduleRefresh() {
-        cancelPending()
-        schedule(REFRESH_MS) {
-            if (!showing) return@schedule
-            zoneIdx++
-            attempts = 0
-            requestNextZone()
-        }
-    }
-
-    private fun schedule(ms: Long, r: Runnable) {
-        cancelPending()
-        pending = r
-        main.postDelayed(r, ms)
-    }
-
-    private fun cancelPending() {
-        pending?.let { main.removeCallbacks(it) }
-        pending = null
-    }
-
-    private fun destroyAd() {
-        adId?.let {
-            try {
-                Tapsell.destroyBannerAd(it)
-                Log.d(TAG, "banner destroyed")
-            } catch (e: Exception) { Log.w(TAG, "destroy threw: " + e.message) }
-        }
-        adId = null
-    }
-
-    private fun setWebMargin(px: Int) {
-        val wv = webView ?: return
-        try {
-            wv.post {
-                val lp = wv.layoutParams as? ViewGroup.MarginLayoutParams ?: return@post
-                if (lp.bottomMargin != px) { lp.bottomMargin = px; wv.layoutParams = lp }
-            }
-        } catch (_: Exception) {}
-    }
+    /* ---------- ابزار ---------- */
 
     private fun findWebView(act: Activity): WebView? {
-        try {
-            val root = act.findViewById<ViewGroup>(android.R.id.content)
-            return searchWebView(root)
-        } catch (_: Exception) { return null }
+        return try {
+            searchWebView(act.findViewById<ViewGroup>(android.R.id.content))
+        } catch (_: Exception) { null }
     }
 
     private fun searchWebView(v: android.view.View?): WebView? {
@@ -353,7 +521,4 @@ object AzanAds {
         }
         return null
     }
-
-    private fun dp(act: Activity, v: Int): Int =
-        Math.round(v * act.resources.displayMetrics.density)
 }

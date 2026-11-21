@@ -93,7 +93,7 @@
     vibratePre: true,        // vibrate on pre-azan notification
     preOnlyEnabledAzan: true // only pre-notify for azans that are enabled
   };
-  const APP_VERSION = '2.1.5';
+  const APP_VERSION = '2.2.0';
   const METHOD_LABELS = {
     tehran: 'مؤسسه ژئوفیزیک تهران',
     mwl: 'لیگ جهانی مسلمانان',
@@ -496,12 +496,15 @@
     if (S.showMidnight && tms.midnight) extra.push(['نیمه‌شب شرعی', tms.midnight.min]);
     ensurePrayedDay();
     const pc = prayedCount();
-    const rows = PRAYERS.map(([k]) => {
+    const rowHtml = PRAYERS.map(([k]) => {
       const done = isPrayed(k);
       const cls = (nx && nx.key === k ? ' on' : (tms[k].ms <= now ? ' past' : '')) + (done ? ' done' : '');
       const check = AZAN.includes(k) ? '<button class="pray-check' + (done ? ' on' : '') + '" data-pray="' + k + '" aria-label="علامت نماز">' + (done ? '✓' : '○') + '</button>' : '';
       return '<div class="trow' + cls + '"><i>' + ICON[k] + '</i><span>' + SHORT[k] + '</span>' + check + '<b>' + hm(tms[k].min) + '</b></div>';
-    }).join('') + extra.map(([n, min]) => '<div class="trow dim"><span>' + n + '</span><b>' + hm(min) + '</b></div>').join('');
+    });
+    /* بنر تپسل «بین اوقات نماز» — بعد از ردیف سوم (اذان ظهر) درج می‌شود */
+    const rows = rowHtml.slice(0, 3).join('') + adSlotHtml('adSlotHome') + rowHtml.slice(3).join('') +
+      extra.map(([n, min]) => '<div class="trow dim"><span>' + n + '</span><b>' + hm(min) + '</b></div>').join('');
     const goalHtml = S.dailyGoal !== false ? '<div class="goal-bar"><span>امروز ' + fa(pc) + ' از ۵ نماز</span><div class="goal-track"><div class="goal-fill" style="width:' + (pc*20) + '%"></div></div></div>' : '';
     const q = (id, icn, t, main) => '<button class="qbtn' + (main ? ' main' : '') + '"' + (id === 'namazMode' ? ' id="namazMode"' : ' onclick="go(\'' + id + '\')"') + '><i>' + icn + '</i><span>' + t + '</span></button>';
     app.innerHTML =
@@ -1230,15 +1233,36 @@ function renderFaq() {
     syncAds();
   }
 
-  /* ---------- تبلیغات تپسل: بنر فقط پایین صفحه اذان (خانه) ----------
-     در بقیه صفحات، حین راه‌اندازی اولیه و روی صفحه پخش اذان، بنر پنهان می‌شود.
-     در نسخه وب (مرورگر) Native.available() برابر false است و کاری انجام نمی‌شود. */
+  /* ---------- تبلیغات تپسل (نسخه ۲.۲.۰): بنرهای درون‌محتوایی ----------
+     • صفحه اصلی: ۱ بنر بین اوقات نمازها (بعد از اذان ظهر) → #adSlotHome
+     • صفحه پخش اذان: ۴ بنر زیر دکمه «قطع صدا» → #adSlotAzan
+     کد بومی هر ۲۵۰ میلی‌ثانیه مختصات دقیق همین دو نقطه را از تابع
+     window.__azanAdRects() می‌خواند و بنر تپسل را دقیقاً روی همان‌جا می‌نشاند؛
+     در بقیه صفحات این نقطه‌ها وجود ندارند و بنرها خودکار پنهان می‌شوند.
+     در نسخه وب (مرورگر) Native.available() برابر false است و هیچ بنری ساخته نمی‌شود. */
+  function adSlotHtml(id, count) {
+    if (!Native.available()) return '';
+    const slot = '<div class="ad-slot"><span>محل نمایش تبلیغ</span></div>';
+    return '<div' + (id ? ' id="' + id + '"' : '') + ' class="ad-box">' +
+      new Array(count || 1).fill(slot).join('') + '</div>';
+  }
   function syncAds() {
     if (!Native.available()) return;
-    const azanOpen = !ov.hidden;
-    if (page === 'home' && S.setupDone && !azanOpen) Native.adsShow();
-    else Native.adsHide();
+    Native.adsShow();          // فقط یک‌بار راه‌اندازی می‌کند؛ جای بنرها را کد بومی مدیریت می‌کند
   }
+  /* مختصات نقاط بنر برای کد بومی — [چپ، بالا، عرض، ارتفاع] بر حسب پیکسل CSS */
+  window.__azanAdRects = function () {
+    function r(id) {
+      const el = document.getElementById(id);
+      if (!el) return null;
+      const b = el.getBoundingClientRect();
+      if (b.width < 20 || b.height < 20) return null;
+      return [Math.round(b.left), Math.round(b.top), Math.round(b.width), Math.round(b.height)];
+    }
+    const azan = ov.hidden ? null : r('adSlotAzan');
+    const home = (ov.hidden && page === 'home' && S.setupDone) ? r('adSlotHome') : null;
+    return JSON.stringify({ home: home, azan: azan });
+  };
 
   /* ---------- live tick (GPU-friendly: minimal style writes) ---------- */
   let _ringSec = -1;
@@ -1355,6 +1379,7 @@ function renderFaq() {
       '<input id="ovVol" type="range" min="5" max="100" value="100" aria-label="میزان صدا">' +
       '<button class="ov-vb" id="ovVu" aria-label="زیاد کردن صدا">' + ic('plus') + '</button></div>' +
       '<div class="ov-btns"><button id="ovMute" class="ov-btn">' + ic('soff') + ' قطع صدا</button><button id="ovClose" class="ov-btn alt">' + ic('close') + ' بستن</button></div>' +
+      adSlotHtml('adSlotAzan', 4) +                       /* ۴ بنر زیر «قطع صدا» */
       '<div id="ovNext" class="ov-next"></div>' +
       '<div class="ov-hint">با پایان اذان این صفحه خودکار بسته می‌شود. برای بستن زودتر، دکمه بازگشت گوشی یا «بستن» را بزنید.</div></div>';
   }
