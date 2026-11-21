@@ -38,7 +38,7 @@ import org.json.JSONObject
 import org.json.JSONTokener
 
 /**
- * تبلیغات تپسل — نسخه ۲.۲.۳ (مختصات فیزیکی از JS با devicePixelRatio + elevation)
+ * تبلیغات تپسل — نسخه ۲.۲.۴ (رفع hang شدن SDK init + timeout درخواست)
  *
  * چیدمان (طبق درخواست کاربر، از نسخه ۲.۲.۰):
  *   ۱) صفحه اصلی (خانه): **۱ تبلیغ بین اوقات نمازها** — بعد از ردیف «اذان ظهر»
@@ -194,11 +194,44 @@ object AzanAds {
         webView = wv ?: findWebView(act)
         Log.d(TAG, "show() on " + act.javaClass.simpleName +
                 ", hasWebView=" + (webView != null))
+        // listener را زود ست کن تا اگر SDK قبلاً init شده، باز هم وضعیت را همگام کنیم
+        watchInitialization()
         ensureViews(act)
         if (!polling) {
             polling = true
             main.postDelayed({ poll() }, POLL_MS)
             Log.d(TAG, "position poller started (" + POLL_MS + "ms)")
+        }
+        // اگر SDK هنوز waiting است، چند ثانیه بعد optimistic ready شو و درخواست‌ها را از سر بگیر
+        main.postDelayed({ forceReadyIfWaiting() }, 4_000L)
+        main.postDelayed({ forceReadyIfWaiting() }, 10_000L)
+    }
+
+    /**
+     * اگر auto-init تپسل قبل از setInitializationListener تمام شده باشد،
+     * کالبک هرگز نمی‌آید و sdkReady=false می‌ماند. بعد از چند ثانیه آن را true می‌کنیم
+     * و درخواست‌های معلق را دوباره می‌زنیم.
+     */
+    private fun forceReadyIfWaiting() {
+        if (sdkReady) return
+        Log.w(TAG, "SDK init still waiting — forcing ready and re-kicking slots")
+        markSdkReadyAndKick()
+    }
+
+    /** از MainActivity وقتی کالبک init زود می‌آید صدا زده می‌شود. */
+    fun onSdkReadyFromActivity() {
+        main.post { markSdkReadyAndKick() }
+    }
+
+    private fun markSdkReadyAndKick() {
+        sdkReady = true
+        initListenerSet = true
+        for (s in allSlots) {
+            if (s.requesting) {
+                s.requesting = false
+                s.attempts = 0
+            }
+            if (s.visible) kick(s)
         }
     }
 
@@ -573,33 +606,62 @@ object AzanAds {
         s.requesting = true
         setStatus(s, "در انتظار تبلیغ…", s.lastError)
         Log.d(TAG, "[" + s.name + "] request " + kindName(kind) + " zone " +
-                (s.zoneIdx % s.pool.size + 1) + "/" + s.pool.size + " -> " + zone)
+                (s.zoneIdx % s.pool.size + 1) + "/" + s.pool.size + " -> " + zone +
+                " sdkReady=" + sdkReady)
+        // اگر onSuccess/onFailure هرگز نیامد (SDK hang)، بعد از ۱۵ثانیه آزاد کن
+        schedule(s, 15_000L) {
+            if (s.requesting) {
+                Log.w(TAG, "[" + s.name + "] request timeout (15s) — treating as failure")
+                s.requesting = false
+                onFail(s, "timeout — SDK پاسخ نداد (sdkInit=" +
+                        (if (sdkReady) "ready" else "waiting") + ")", zone, known == null, kind)
+            }
+        }
         try {
             if (kind == Kind.NATIVE) {
                 Tapsell.requestNativeAd(zone, act, object : RequestResultListener {
                     override fun onSuccess(id: String) {
                         Log.d(TAG, "[" + s.name + "] native request success (adId=" + id.take(12) + "…)")
-                        main.post { s.requesting = false; zoneKind[zone] = Kind.NATIVE; showAd(s, id, Kind.NATIVE) }
+                        main.post {
+                            cancel(s)
+                            s.requesting = false
+                            zoneKind[zone] = Kind.NATIVE
+                            showAd(s, id, Kind.NATIVE)
+                        }
                     }
                     override fun onFailure(message: String) {
                         Log.w(TAG, "[" + s.name + "] native request failed: " + message)
-                        main.post { s.requesting = false; onFail(s, message, zone, known == null, Kind.NATIVE) }
+                        main.post {
+                            cancel(s)
+                            s.requesting = false
+                            onFail(s, message, zone, known == null, Kind.NATIVE)
+                        }
                     }
                 })
             } else {
                 Tapsell.requestBannerAd(zone, BannerSize.BANNER_320_50, object : RequestResultListener {
                     override fun onSuccess(id: String) {
                         Log.d(TAG, "[" + s.name + "] banner request success (adId=" + id.take(12) + "…)")
-                        main.post { s.requesting = false; zoneKind[zone] = Kind.BANNER; showAd(s, id, Kind.BANNER) }
+                        main.post {
+                            cancel(s)
+                            s.requesting = false
+                            zoneKind[zone] = Kind.BANNER
+                            showAd(s, id, Kind.BANNER)
+                        }
                     }
                     override fun onFailure(message: String) {
                         Log.w(TAG, "[" + s.name + "] banner request failed: " + message)
-                        main.post { s.requesting = false; onFail(s, message, zone, known == null, Kind.BANNER) }
+                        main.post {
+                            cancel(s)
+                            s.requesting = false
+                            onFail(s, message, zone, known == null, Kind.BANNER)
+                        }
                     }
                 })
             }
         } catch (e: Exception) {
             Log.w(TAG, "[" + s.name + "] request threw: " + e.message)
+            cancel(s)
             s.requesting = false
             onFail(s, e.message ?: "request failed", zone, false, kind)
         }
@@ -810,8 +872,12 @@ object AzanAds {
         return appKey
     }
 
-    /** یک‌بار listener راه‌اندازی SDK را ست می‌کند تا لحظهٔ آماده‌شدن تپسل لاگ شود
-     *  و اگر درخواستی قبل از راه‌اندازی رد شده باشد، دوباره تلاش شود. */
+    /**
+     * یک‌بار listener راه‌اندازی SDK را ست می‌کند.
+     * نکتهٔ مهم: ContentProvider تپسل معمولاً قبل از اولین adsShow اینیت می‌شود؛
+     * اگر listener دیر ست شود کالبک از دست می‌رود و sdkReady همیشه false می‌ماند.
+     * به‌همین خاطر forceReadyIfWaiting هم بعد از چند ثانیه وضعیت را بازیابی می‌کند.
+     */
     private fun watchInitialization() {
         if (initListenerSet) return
         initListenerSet = true
@@ -821,13 +887,18 @@ object AzanAds {
                     Log.d(TAG, "Tapsell SDK initialization complete")
                     sdkReady = true
                     main.post {
-                        for (s in allSlots) kick(s)     // درخواست‌های معلق دوباره تلاش شوند
+                        for (s in allSlots) {
+                            if (s.requesting) s.requesting = false
+                            kick(s)
+                        }
                     }
                 }
             })
-            Log.d(TAG, "initialization listener set")
+            Log.d(TAG, "initialization listener set (sdkReady=" + sdkReady + ")")
         } catch (e: Exception) {
             Log.w(TAG, "setInitializationListener failed: " + e.message)
+            // اگر API خطا داد، حداقل بعداً forceReady کمک کند
+            sdkReady = true
         }
     }
 

@@ -3,13 +3,27 @@ package com.ofoqshari.bz
 import android.content.Intent
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.WindowManager
 import com.getcapacitor.BridgeActivity
+import ir.tapsell.mediation.MediationInitializationListener
+import ir.tapsell.mediation.Tapsell
 
 class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         registerPlugin(AzanPlugin::class.java) // must be before super.onCreate
         super.onCreate(savedInstanceState)
+        // listener را زود ست کن تا کالبک auto-init تپسل از دست نرود
+        try {
+            Tapsell.setInitializationListener(object : MediationInitializationListener {
+                override fun onInitializationComplete() {
+                    Log.d("AzanAds", "Tapsell SDK init complete (from MainActivity)")
+                    AzanAds.onSdkReadyFromActivity()
+                }
+            })
+        } catch (e: Exception) {
+            Log.w("AzanAds", "early setInitializationListener failed: " + e.message)
+        }
         handleAzan(intent)
     }
 
