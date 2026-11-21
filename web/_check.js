@@ -581,7 +581,7 @@ const CITIES = [
     vibratePre: true,        // vibrate on pre-azan notification
     preOnlyEnabledAzan: true // only pre-notify for azans that are enabled
   };
-  const APP_VERSION = '2.2.0';
+  const APP_VERSION = '2.2.1';
   const METHOD_LABELS = {
     tehran: 'مؤسسه ژئوفیزیک تهران',
     mwl: 'لیگ جهانی مسلمانان',
@@ -1722,13 +1722,17 @@ function renderFaq() {
     syncAds();
   }
 
-  /* ---------- تبلیغات تپسل (نسخه ۲.۲.۰): بنرهای درون‌محتوایی ----------
-     • صفحه اصلی: ۱ بنر بین اوقات نمازها (بعد از اذان ظهر) → #adSlotHome
-     • صفحه پخش اذان: ۴ بنر زیر دکمه «قطع صدا» → #adSlotAzan
-     کد بومی هر ۲۵۰ میلی‌ثانیه مختصات دقیق همین دو نقطه را از تابع
-     window.__azanAdRects() می‌خواند و بنر تپسل را دقیقاً روی همان‌جا می‌نشاند؛
-     در بقیه صفحات این نقطه‌ها وجود ندارند و بنرها خودکار پنهان می‌شوند.
-     در نسخه وب (مرورگر) Native.available() برابر false است و هیچ بنری ساخته نمی‌شود. */
+  /* ---------- تبلیغات تپسل (نسخه ۲.۲.۱): تبلیغ‌های همسان درون‌محتوایی ----------
+     • صفحه اصلی: ۱ تبلیغ بین اوقات نمازها (بعد از اذان ظهر) → #adSlotHome
+     • صفحه پخش اذان: ۴ تبلیغ زیر دکمه «قطع صدا» → #adSlotAzan
+     مختصات همین دو نقطه در سه مسیر به کد بومی می‌رسد تا تبلیغ مثل یک عنصر ثابت
+     صفحه سر جایش بماند:
+       ۱) با هر اسکرول/تغییر اندازه، لحظه‌ای از طریق پل window.AzanAdsBridge.onRects
+          به بومی فرستاده می‌شود (بدون وقفهٔ نظرسنجی — سینک کامل با اسکرول)؛
+       ۲) تابع window.__azanAdRects() را کد بومی خودش هر ۲۵۰ میلی‌ثانیه می‌خواند؛
+       ۳) بعد از هر تعویض صفحه، pushAdRects در syncAds فوراً صدا زده می‌شود.
+     در بقیه صفحات این نقطه‌ها وجود ندارند و تبلیغ‌ها خودکار پنهان می‌شوند.
+     در نسخه وب (مرورگر) Native.available() برابر false است و هیچ تبلیغی ساخته نمی‌شود. */
   function adSlotHtml(id, count) {
     if (!Native.available()) return '';
     const slot = '<div class="ad-slot"><span>محل نمایش تبلیغ</span></div>';
@@ -1737,10 +1741,11 @@ function renderFaq() {
   }
   function syncAds() {
     if (!Native.available()) return;
-    Native.adsShow();          // فقط یک‌بار راه‌اندازی می‌کند؛ جای بنرها را کد بومی مدیریت می‌کند
+    Native.adsShow();          // فقط یک‌بار راه‌اندازی می‌کند؛ جای تبلیغ‌ها را کد بومی مدیریت می‌کند
+    pushAdRects();             // مختصات همین لحظه بفرست تا تبلیغ بی‌درنگ سر جایش بنشیند
   }
-  /* مختصات نقاط بنر برای کد بومی — [چپ، بالا، عرض، ارتفاع] بر حسب پیکسل CSS */
-  window.__azanAdRects = function () {
+  /* مختصات نقاط تبلیغ برای کد بومی — [چپ، بالا، عرض، ارتفاع] بر حسب پیکسل CSS */
+  function adRectsJson() {
     function r(id) {
       const el = document.getElementById(id);
       if (!el) return null;
@@ -1751,7 +1756,23 @@ function renderFaq() {
     const azan = ov.hidden ? null : r('adSlotAzan');
     const home = (ov.hidden && page === 'home' && S.setupDone) ? r('adSlotHome') : null;
     return JSON.stringify({ home: home, azan: azan });
-  };
+  }
+  window.__azanAdRects = function () { return adRectsJson(); };
+  /* ارسال فوری مختصات به کد بومی — با requestAnimationFrame حداکثر یک‌بار در هر فریم */
+  let _adPushPend = false;
+  function pushAdRects() {
+    if (!Native.available()) return;
+    const b = window.AzanAdsBridge;
+    if (!b || !b.onRects) return;
+    if (_adPushPend) return;
+    _adPushPend = true;
+    (window.requestAnimationFrame || function (f) { setTimeout(f, 16); })(function () {
+      _adPushPend = false;
+      try { b.onRects(adRectsJson()); } catch (e) {}
+    });
+  }
+  window.addEventListener('scroll', pushAdRects, { passive: true });
+  window.addEventListener('resize', pushAdRects);
 
   /* ---------- live tick (GPU-friendly: minimal style writes) ---------- */
   let _ringSec = -1;
@@ -1832,6 +1853,7 @@ function renderFaq() {
   const ov = document.createElement('div');
   ov.id = 'azanScreen'; ov.hidden = true;
   document.body.appendChild(ov);
+  ov.addEventListener('scroll', pushAdRects, { passive: true });   // سینک تبلیغ‌های صفحه اذان هنگام اسکرول
   let ovKey = null, ovClosed = null, ovMuted = false, ovBusy = false, ovShown = false, ovDone = false, ovHist = false, ovAwake = false;
   function awake(on) { if (ovAwake !== on) { ovAwake = on; Native.keepAwake(on); } }
   /* Closing = stop the azan, hide the screen. Triggered by the Close button or the phone's Back button. */

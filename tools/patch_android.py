@@ -3,7 +3,7 @@
 import json, os, re, shutil, sys
 
 # ════════════════════════════════════════════════════════════════════════════
-# تبلیغات تپسل — بنر پایین صفحه اذان
+# تبلیغات تپسل — بنر بومی + بنر استاندارد درون‌محتوایی (از نسخهٔ ۲.۲.۱)
 #
 # ✅ شناسه اپلیکیشن (App Key) تپسل از نسخه ۲.۱.۱ وارد شده است؛ دیگر نیازی به
 #    کار دستی نیست. اگر روزی خواستید کلید را عوض کنید، همین خط پایین را ویرایش
@@ -182,7 +182,7 @@ if icon_copied:
 else:
     print("Warning: no prebuilt icons found under native/res/mipmap-*")
 
-# 6) Tapsell Mediation SDK — banner ad at the bottom of the azan (home) page.
+# 6) Tapsell Mediation SDK — بنر بومی/استاندارد درون‌محتوایی (صفحهٔ اصلی + صفحهٔ اذان).
 #    Adds: manifest placeholder (App Key), SDK dependencies, tapsell maven repo.
 ag = os.path.join(A, "app/build.gradle")
 b = open(ag, encoding="utf-8").read()
