@@ -38,7 +38,7 @@ import org.json.JSONObject
 import org.json.JSONTokener
 
 /**
- * تبلیغات تپسل — نسخه ۲.۲.۱ (بنر بومی + سینک اسکرول)
+ * تبلیغات تپسل — نسخه ۲.۲.۲ (رفع باگ واحد پیکسل در تشخیص نمایان‌بودن اسلات)
  *
  * چیدمان (طبق درخواست کاربر، از نسخه ۲.۲.۰):
  *   ۱) صفحه اصلی (خانه): **۱ تبلیغ بین اوقات نمازها** — بعد از ردیف «اذان ظهر»
@@ -481,7 +481,8 @@ object AzanAds {
 
     private fun place(s: Slot, r: IntArray?, ox: Int, oy: Int, dens: Float, viewH: Int) {
         val wrap = s.wrap ?: return
-        if (r == null || !onScreen(r, oy, viewH)) {
+        // r از getBoundingClientRect به پیکسل CSS است؛ oy و viewH فیزیکی‌اند → dens لازم است
+        if (r == null || !onScreen(r, oy, viewH, dens)) {
             if (s.visible) { wrap.visibility = android.view.View.GONE; s.visible = false }
             return
         }
@@ -492,7 +493,7 @@ object AzanAds {
 
     private fun placeAzanBox(r: IntArray?, ox: Int, oy: Int, dens: Float, viewH: Int) {
         val box = azanWrap ?: return
-        if (r == null || !onScreen(r, oy, viewH)) {
+        if (r == null || !onScreen(r, oy, viewH, dens)) {
             if (box.visibility != android.view.View.GONE) {
                 box.visibility = android.view.View.GONE
                 for (s in azanSlots) s.visible = false
@@ -503,11 +504,21 @@ object AzanAds {
         for (s in azanSlots) { s.visible = true; kick(s) }
     }
 
-    /** اسلات باید دست‌کم ۴۵٪ داخل دید باشد تا تبلیغ نشان داده شود (برش نصفه زشت است) */
-    private fun onScreen(r: IntArray, oy: Int, viewH: Int): Boolean {
-        val top = r[1]; val bottom = r[1] + r[3]
-        val visTop = Math.max(top, oy)
-        val visBottom = Math.min(bottom, oy + viewH)
+    /**
+     * اسلات باید دست‌کم ۴۵٪ داخل دید باشد تا تبلیغ نشان داده شود (برش نصفه زشت است).
+     * r به پیکسل CSS است (خروجی getBoundingClientRect)، oy و viewH به پیکسل فیزیکی
+     * (getLocationInWindow / WebView.height) — پس قبل از مقایسه، oy و viewH را به CSS تبدیل می‌کنیم.
+     * باگ قبلی: روی دستگاه‌های density>1 (تقریباً همهٔ گوشی‌های امروزی) مقایسه واحدهای مختلف
+     * باعث می‌شد اسلات همیشه «خارج از دید» تشخیص داده شود و تبلیغ هرگز درخواست/نمایش داده نشود.
+     */
+    private fun onScreen(r: IntArray, oy: Int, viewH: Int, dens: Float): Boolean {
+        val d = if (dens > 0f) dens else 1f
+        val topCss = r[1].toFloat()
+        val bottomCss = (r[1] + r[3]).toFloat()
+        val oyCss = oy / d
+        val viewHCss = viewH / d
+        val visTop = Math.max(topCss, oyCss)
+        val visBottom = Math.min(bottomCss, oyCss + viewHCss)
         return visBottom - visTop >= r[3] * 0.45f
     }
 
