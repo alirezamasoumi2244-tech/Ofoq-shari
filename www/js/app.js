@@ -93,7 +93,7 @@
     vibratePre: true,        // vibrate on pre-azan notification
     preOnlyEnabledAzan: true // only pre-notify for azans that are enabled
   };
-  const APP_VERSION = '2.1.3';
+  const APP_VERSION = '2.1.5';
   const METHOD_LABELS = {
     tehran: 'مؤسسه ژئوفیزیک تهران',
     mwl: 'لیگ جهانی مسلمانان',

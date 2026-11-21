@@ -75,6 +75,26 @@ elif "AD_ID" not in m:
     m = m.replace("</manifest>", '    <uses-permission android:name="com.google.android.gms.permission.AD_ID" />\n</manifest>', 1)
     open(mp, "w", encoding="utf-8").write(m)
 
+# 2b) کلید تپسل به‌صورت متادیتای مستقیم در مانیفست — علاوه بر manifestPlaceholder.
+#     SDK تپسل کلید را از متادیتای «ir.tapsell.mediation.APPLICATION_KEY» می‌خواند؛
+#     تزریق مستقل از مکانیزم placeholder باعث می‌شود حتی اگر جایگزینی placeholder
+#     در build.gradle انجام نشده باشد، کلید حتماً در APK باشد (نسخه ۲.۱.۵).
+mp = os.path.join(A, "app/src/main/AndroidManifest.xml")
+m = open(mp, encoding="utf-8").read()
+if "ir.tapsell.mediation.APPLICATION_KEY" not in m:
+    meta = ('    <meta-data\n'
+            '        android:name="ir.tapsell.mediation.APPLICATION_KEY"\n'
+            '        android:value="' + TAPSELL_APP_KEY + '" />\n')
+    m = m.replace("</application>", meta + "</application>", 1)
+    open(mp, "w", encoding="utf-8").write(m)
+    print("Tapsell App Key meta-data injected into AndroidManifest.xml")
+else:
+    m2 = re.sub(r'(android:name="ir\.tapsell\.mediation\.APPLICATION_KEY"[^>]*android:value=")[^"]*(")',
+                r"\g<1>" + TAPSELL_APP_KEY + r"\2", m, flags=re.S)
+    if m2 != m:
+        open(mp, "w", encoding="utf-8").write(m2)
+        print("Tapsell App Key meta-data updated in AndroidManifest.xml")
+
 # 3) Gradle: enable Kotlin
 rg = os.path.join(A, "build.gradle")
 g = open(rg, encoding="utf-8").read()
