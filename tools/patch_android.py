@@ -81,8 +81,8 @@ root_gradle = os.path.join(A, "build.gradle")
 if os.path.isfile(root_gradle):
     rg_text = open(root_gradle, encoding="utf-8").read()
     rg_text = re.sub(
-        r"(com\\.android\\.tools\\.build:gradle:)8\\.2\\.1",
-        r"\\g<1>8.6.1",
+        r"(com\.android\.tools\.build:gradle:)8\.2\.1",
+        r"\g<1>8.6.1",
         rg_text,
     )
     open(root_gradle, "w", encoding="utf-8").write(rg_text)
@@ -90,9 +90,9 @@ if os.path.isfile(root_gradle):
 variables_gradle = os.path.join(A, "variables.gradle")
 if os.path.isfile(variables_gradle):
     vg = open(variables_gradle, encoding="utf-8").read()
-    vg2, n = re.subn(r"(compileSdkVersion\\s*=\\s*)\\d+", r"\\g<1>35", vg, count=1)
+    vg2, n = re.subn(r"(compileSdkVersion\s*=\s*)\d+", r"\g<1>35", vg, count=1)
     if n == 0:
-        vg2, n = re.subn(r"(compileSdkVersion\\s+)\\d+", r"\\g<1>35", vg, count=1)
+        vg2, n = re.subn(r"(compileSdkVersion\s+)\d+", r"\\g<1>35", vg, count=1)
     if n:
         open(variables_gradle, "w", encoding="utf-8").write(vg2)
     else:
@@ -101,7 +101,7 @@ if os.path.isfile(variables_gradle):
 wrapper = os.path.join(A, "gradle/wrapper/gradle-wrapper.properties")
 if os.path.isfile(wrapper):
     wp = open(wrapper, encoding="utf-8").read()
-    wp = re.sub(r"gradle-[0-9.]+-(?:all|bin)\\.zip", "gradle-8.7-all.zip", wp)
+    wp = re.sub(r"gradle-[0-9.]+-(?:all|bin)\.zip", "gradle-8.7-all.zip", wp)
     open(wrapper, "w", encoding="utf-8").write(wp)
 
 # 4) App name
