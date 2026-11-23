@@ -26,7 +26,7 @@ if os.path.isdir(raw_src):
     for f in os.listdir(raw_src):
         shutil.copy2(os.path.join(raw_src, f), os.path.join(raw_dst, f))
 # widget layout + provider info
-for sub in ("layout", "xml"):
+for sub in ("layout", "xml", "drawable"):
     src = os.path.join(ROOT, "native/res", sub)
     if not os.path.isdir(src):
         continue
