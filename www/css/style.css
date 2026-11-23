@@ -200,8 +200,8 @@ h2{font-size:.88rem;margin:16px 4px 8px;color:var(--amber);font-weight:700}
 .setup-city-list,#cList{max-height:min(40vh,300px);overflow-y:auto;-webkit-overflow-scrolling:touch;display:flex;flex-direction:column;gap:6px;margin:4px 0 6px}
 .setup-finish{margin-top:8px;font-size:1rem;min-height:52px;width:100%}
 
-#ov{position:fixed;inset:0;z-index:80;background:linear-gradient(180deg,#2a1e14,#140f0a);display:flex;align-items:center;justify-content:center;padding:24px}
-#ov[hidden]{display:none!important}
+#azanScreen{position:fixed;inset:0;z-index:80;background:linear-gradient(180deg,#2a1e14,#140f0a);display:flex;align-items:center;justify-content:center;padding:24px}
+#azanScreen[hidden]{display:none!important}
 .ov-in{text-align:center;max-width:360px;width:100%;position:relative;z-index:2}
 .ov-title{font-size:1.5rem;font-weight:800;color:var(--amber);margin:12px 0}
 .ov-clock{font-size:2.5rem;font-weight:800;margin:8px 0;font-variant-numeric:tabular-nums;direction:ltr}
