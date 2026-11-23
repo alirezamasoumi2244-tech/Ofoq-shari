@@ -20,6 +20,7 @@
     mute: on => call('mute', { on: !!on }),
     fullScreenSettings: () => call('fullScreenSettings'),
     keepAwake: on => call('keepAwake', { on: !!on }),
-    openUrl: url => call('openUrl', { url: url || '' })
+    openUrl: url => call('openUrl', { url: url || '' }),
+    adsInit: () => call('adsInit')
   };
 })();
