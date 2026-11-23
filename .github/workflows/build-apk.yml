@@ -1,5 +1,6 @@
 
 name: Build AzanGo APK
+# Re-run after fixing the Tapsell manifest placeholder patch
 
 on:
   workflow_dispatch:
