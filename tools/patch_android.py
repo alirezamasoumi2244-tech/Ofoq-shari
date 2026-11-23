@@ -138,4 +138,31 @@ if icon_copied:
 else:
     print("Warning: no prebuilt icons found under native/res/mipmap-*")
 
+
+# 6) Tapsell Cordova compatibility: CordovaInterface.getActivity() is
+# exposed as AppCompatActivity in Capacitor, while TapsellAdActivity is a
+# separate Activity subclass. Widen to android.app.Activity before instanceof.
+tapsell_java = os.path.join(
+    A, "capacitor-cordova-android-plugins/src/main/java/ir/tapsell/sdk/TapsellCordovaInterface.java"
+)
+if os.path.isfile(tapsell_java):
+    t = open(tapsell_java, encoding="utf-8").read()
+    for method, callback in (("close", "onClose"), ("dismiss", "onDismiss"), ("replay", "replayVideo")):
+        pattern = (
+            r"private void " + method +
+            r"\\(JSONArray args, CallbackContext callbackContext\\) throws JSONException\\s*\\{.*?\\n\\s*\\}"
+        )
+        replacement = (
+            "private void " + method + "(JSONArray args, CallbackContext callbackContext) throws JSONException {\\n"
+            "        Activity activity = cordova == null ? null : cordova.getActivity();\\n"
+            "        if (activity instanceof TapsellAdActivity) {\\n"
+            "            ((TapsellAdActivity) activity)." + callback + "();\\n"
+            "        }\\n"
+            "    }"
+        )
+        t, count = re.subn(pattern, replacement, t, count=1, flags=re.S)
+        if count != 1:
+            print("Warning: could not patch Tapsell method", method)
+    open(tapsell_java, "w", encoding="utf-8").write(t)
+
 print("AzanGo native overlay applied for", app_id)
