@@ -80,8 +80,8 @@ if "ir.tapsell.mediation:tapsell:1.3.0" not in b:
 if "TapsellMediationAppKey" not in b:
     tapsell_key = "mkerkacpddbnttkiceabqptdpissipciqmojhhdkceocgbfkcchppfhpmhlemgafodclej"
     b, count = re.subn(
-        r"(defaultConfig\\s*\\{)",
-        r"\\1\\n        manifestPlaceholders += [TapsellMediationAppKey: '" + tapsell_key + "']",
+        r"(defaultConfig\s*\{)",
+        r"\1\n        manifestPlaceholders += [TapsellMediationAppKey: '" + tapsell_key + "']",
         b,
         count=1,
     )
