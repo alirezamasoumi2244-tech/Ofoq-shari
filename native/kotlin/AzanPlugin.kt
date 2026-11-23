@@ -154,6 +154,19 @@ class AzanPlugin : Plugin() {
         call.resolve()
     }
 
+    /** Starts the native Tapsell ad overlay engine and binds it to the app WebView. */
+    @PluginMethod
+    fun adsInit(call: PluginCall) {
+        try {
+            activity.runOnUiThread {
+                AzanAds.show(activity, bridge.webView)
+                call.resolve()
+            }
+        } catch (e: Exception) {
+            call.reject(e.message ?: "Tapsell initialization failed")
+        }
+    }
+
     @PluginMethod
     fun openUrl(call: PluginCall) {
         try {
