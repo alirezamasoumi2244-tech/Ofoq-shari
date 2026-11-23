@@ -228,7 +228,6 @@
   function show(pg) {
     if (page === 'qibla' && pg !== 'qibla') stopQiblaCompass();
     page = pg; cal.first = null; render(); window.scrollTo(0, 0);
-    if (window.TapsellAds) { if (pg === 'home') window.TapsellAds.showHome(); else window.TapsellAds.dismiss(); }
     if (app.classList) { app.classList.remove('enter'); void app.offsetWidth; app.classList.add('enter'); }
   }
   function go(pg) {
@@ -346,6 +345,7 @@
       '</section>' +
       '<div class="qrow">' + q('namazMode', ic('check'), 'نماز', true) + q('dhikr', ic('moon'), 'ذکر') + q('duas', ic('mic'), 'ادعیه') + q('week', ic('clock'), 'اوقات هفته') + '</div>' +
       '<h2>اوقات امروز</h2><section class="tlist">' + rows + '</section>' +
+      '<div id="adSlotHome" class="ad-anchor" aria-label="تبلیغ"></div>' +
       '<h2>تقویم</h2><section class="card cal" id="calHost">' + calHtml() + '</section>';
     tick();
   }
@@ -983,7 +983,6 @@ function renderFaq() {
   /* Closing = stop the azan, hide the screen. Triggered by the Close button or the phone's Back button. */
   function closeAzan(stopAudio) {
     ovClosed = ovKey; ovKey = null; ovDone = false; ov.hidden = true; ov.className = '';
-    if (window.TapsellAds) { window.TapsellAds.dismiss(); if (page === 'home') window.TapsellAds.showHome(); }
     awake(false); if (stopAudio !== false) Native.stop();
     if (ovHist) { ovHist = false; try { history.back(); } catch (e) {} }
   }
@@ -1009,9 +1008,9 @@ function renderFaq() {
           '<div class="ov-title">' + (s.name ? 'وقت اذان ' + esc(s.name) : 'آزمایش صدای اذان') + '</div><div id="ovClock" class="ov-clock"></div>' +
           '<div id="ovDate" class="ov-date"></div><div id="ovMsg" class="ov-msg"></div>' +
           '<div class="ov-btns"><button id="ovMute" class="ov-btn">' + ic('soff') + ' قطع صدا</button><button id="ovClose" class="ov-btn alt">' + ic('close') + ' بستن</button></div>' +
+          '<div id="adSlotAzan" class="ad-anchor azan-ad-anchor" aria-label="تبلیغات"></div>' +
           '<div class="ov-hint">با پایان اذان این صفحه خودکار بسته می‌شود. برای بستن زودتر، دکمه بازگشت گوشی یا «بستن» را بزنید.</div></div>';
         ov.hidden = false;
-        if (window.TapsellAds) window.TapsellAds.showAzan();
         if (!ovHist) { try { history.pushState({ azan: 1 }, ''); ovHist = true; } catch (e) {} }
       }
       const c = cityNow(p.tz);
@@ -1282,12 +1281,27 @@ function renderFaq() {
     }
   });
 
+
+  // Native Tapsell overlay reads these DOM rectangles in physical screen pixels.
+  window.__azanAdRects = function () {
+    const rect = id => {
+      const el = document.getElementById(id);
+      if (!el) return null;
+      const r = el.getBoundingClientRect();
+      if (r.width < 40 || r.height < 40) return null;
+      const d = window.devicePixelRatio || 1;
+      return [r.left * d, r.top * d, r.width * d, r.height * d];
+    };
+    return JSON.stringify({ home: rect('adSlotHome'), azan: rect('adSlotAzan') });
+  };
+
   // اولین ورود: راه‌اندازی شهر و دسترسی‌ها
   applyUiPrefs();
   if (!S.setupDone) page = 'setup';
   stack = [page]; try { history.replaceState({ i: 0 }, ''); } catch (e) {}
   render();
-  if (S.setupDone && window.TapsellAds) window.TapsellAds.showHome();
+  // Start the native Tapsell overlay bridge once; DOM anchors control visibility and position.
+  Native.adsInit();
   if (S.setupDone) schedule();
   setInterval(tick, 1000);
   setInterval(pollAzan, 1000);
