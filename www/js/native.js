@@ -14,13 +14,18 @@
     stop: () => call('stop'),
     status: () => call('status'),
     askNotifications: () => call('askNotifications'),
+    askLocation: () => call('askLocation'),
     batterySettings: () => call('batterySettings'),
     appSettings: () => call('appSettings'),
     state: () => call('state'),
     mute: on => call('mute', { on: !!on }),
     fullScreenSettings: () => call('fullScreenSettings'),
     keepAwake: on => call('keepAwake', { on: !!on }),
+    volume: v => call('volume', { v }),
+    vibrate: pat => call('vibrate', { pattern: [].concat(pat).join(',') }),
     openUrl: url => call('openUrl', { url: url || '' }),
-    adsInit: () => call('adsInit')
+    /* تبلیغات تپسل — بنر پایین صفحه اذان (در مرورگر بی‌اثر است) */
+    adsShow: () => call('adsShow'),
+    adsHide: () => call('adsHide')
   };
 })();

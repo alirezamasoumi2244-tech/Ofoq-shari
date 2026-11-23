@@ -8,7 +8,7 @@
     pin: '<path d="M12 21s-6.5-5.6-6.5-11a6.5 6.5 0 0 1 13 0c0 5.4-6.5 11-6.5 11z"/><circle cx="12" cy="10" r="2.3"/>',
     home: '<path d="M3.5 11 12 4l8.5 7"/><path d="M6 10v9.5h12V10"/><path d="M10 19.5v-5h4v5"/>',
     clock: '<circle cx="12" cy="12" r="8.5"/><path d="M12 7.5V12l3 2"/>',
-    gear: '<circle cx="12" cy="12" r="3"/><path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8"/>',
+    gear: '<path d="M10 2.8h4l.6 2.1a7.5 7.5 0 0 1 1.7 1l2-.8 2 3.5-1.5 1.5a7.5 7.5 0 0 1 0 2l1.5 1.5-2 3.5-2-.8a7.5 7.5 0 0 1-1.7 1l-.6 2.1h-4l-.6-2.1a7.5 7.5 0 0 1-1.7-1l-2 .8-2-3.5 1.5-1.5a7.5 7.5 0 0 1 0-2L3.7 8.6l2-3.5 2 .8a7.5 7.5 0 0 1 1.7-1z"/><circle cx="12" cy="11.1" r="2.7"/>',
     bell: '<path d="M6 16.5V11a6 6 0 0 1 12 0v5.5l1.5 1.5h-15z"/><path d="M10 20.5a2.2 2.2 0 0 0 4 0"/>',
     mic: '<rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5.5 11.5a6.5 6.5 0 0 0 13 0M12 18v3"/>',
     sound: '<path d="M4 9.5h3.5L12 5.5v13L7.5 14.5H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/>',
@@ -42,19 +42,22 @@
   const DEF = {
     cityId: 'tehran', custom: null,
     enabled: { fajr: true, dhuhr: true, asr: false, maghrib: true, isha: false },
-    volume: 1, pre: 0, offsets: {}, muezzinId: 'afasy', hijriOffset: 0,
+    volume: 1, pre: 0, offsets: {}, muezzinId: 'afasy', hijriOffset: 1, // +1: islamic-civil often 1 day behind Iranian visual calendar
     muezzins: [{ id: 'afasy', name: 'اذان پیش‌فرض', path: '', file: '' }],
     setupDone: false,
+    obStep: 0,               // onboarding wizard slide (0=city, 1=notifications, 2=battery, 3=azan)
     method: 'tehran',
     fontScale: 1,
     uiMode: 'normal', // normal | elder
     highContrast: false,
     theme: 'green',          // green | blue | sand
-    themeMode: 'dark',       // dark | light
+    themeMode: 'system',     // system | dark | light
     qada: { fajr: 0, dhuhr: 0, asr: 0, maghrib: 0, isha: 0, fast: 0 },
     dhikrCount: 0, dhikrTarget: 33, dhikrName: 'سبحان الله',
     notes: {},               // 'YYYY-M-D' -> text
-    vibrateQibla: true,
+    vibrateQibla: true,      // master switch for all vibration (name kept for old backups)
+    vibrateAzan: false,      // gentle vibration when the azan starts
+    dhikrAwake: true,        // keep the screen on in the tasbih page
     showImsak: true,
     showMidnight: true,
     ramadanMode: false,
@@ -65,9 +68,32 @@
     useMagDecl: true,        // compensate magnetic declination
     favCities: ['tehran'],   // quick favorites
     showProgress: true,      // prayer progress bar
-    preciseCd: true          // countdown with seconds emphasis
+    preciseCd: true,         // countdown with seconds emphasis
+    prayedToday: {},         // { fajr: true, ... } marked as prayed today
+    prayedDate: '',          // 'YYYY-M-D' for prayedToday validity
+    reduceMotion: false,     // less animation
+    showSeconds: true,       // show seconds in countdown
+    autoCity: true,          // suggest nearest city on GPS
+    stickyNext: true,        // keep next prayer visible on home
+    dailyGoal: true,         // encourage marking prayers
+    hapticHome: true,        // light haptic on home actions
+    showKaabaDist: true,     // distance to Mecca in qibla
+    weekStart: 'sat',        // calendar week start
+    notifyOnPrayed: false,   // optional feedback when marking prayed
+    compactHome: false,      // denser home layout
+    highlightFriday: true,   // special Friday treatment
+    showNextOcc: true,       // show upcoming occasions
+    smartNotif: true,        // rich pre-azan notifications
+    quietHours: false,       // suppress pre-notif at night (except fajr)
+    quietStart: 23,
+    quietEnd: 5,
+    ramadanHint: true,       // extra maghrib text in Ramadan mode
+    preEnabled: { fajr: true, dhuhr: true, asr: true, maghrib: true, isha: true },
+    preFajr: null,           // null = use global pre; else minutes only for fajr
+    vibratePre: true,        // vibrate on pre-azan notification
+    preOnlyEnabledAzan: true // only pre-notify for azans that are enabled
   };
-  const APP_VERSION = '1.8.2';
+  const APP_VERSION = '2.2.6';
   const METHOD_LABELS = {
     tehran: 'مؤسسه ژئوفیزیک تهران',
     mwl: 'لیگ جهانی مسلمانان',
@@ -80,9 +106,23 @@
   const fa = s => String(s).replace(/\d/g, d => '۰۱۲۳۴۵۶۷۸۹'[d]);
   const p2 = n => String(n).padStart(2, '0');
   const hm = min => fa(p2(Math.floor(min / 60) % 24) + ':' + p2(min % 60));
+  /* ---------- vibration: native Android first (the WebView's navigator.vibrate is unreliable), browser API as fallback ---------- */
+  const VIB = { tap: [28], done: [70, 70, 70, 70, 180], qibla: [40, 30, 40], rakat: [40], test: [180, 90, 180] };
+  async function vib(kind, force) {
+    if (!force && !S.vibrateQibla) return null;
+    const pat = VIB[kind] || VIB.tap;
+    let r = null;
+    try { r = await Native.vibrate(pat); } catch (e) { r = null; }
+    if (r === null || (r && r.error)) {
+      try { if (navigator.vibrate) return { ok: !!navigator.vibrate(pat), has: true }; } catch (e) {}
+      return { ok: false, has: false };
+    }
+    return r;
+  }
   const esc = s => String(s).replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
 
   let S = load();
+  let setupLocationRequested = false;
   function load() {
     try {
       const raw = localStorage.getItem('azango');
@@ -93,7 +133,13 @@
       if (!m.method || !METHOD_LABELS[m.method]) m.method = 'tehran';
       if (![0.9, 1, 1.15, 1.3].includes(m.fontScale)) m.fontScale = 1;
       if (m.uiMode !== 'elder') m.uiMode = 'normal';
-      if (m.themeMode !== 'light' && m.themeMode !== 'dark') m.themeMode = 'dark';
+      if (!['system', 'light', 'dark'].includes(m.themeMode)) m.themeMode = 'system';
+      // One-time fix: islamic-civil was typically 1 day behind Iranian announced Hijri
+      if (!m.hijriCalFixed) {
+        if (o.hijriOffset === undefined || o.hijriOffset === 0) m.hijriOffset = 1;
+        m.hijriCalFixed = true;
+      }
+      if (!m.preEnabled) m.preEnabled = { fajr: true, dhuhr: true, asr: true, maghrib: true, isha: true };
       return m;
     } catch (e) { return JSON.parse(JSON.stringify(DEF)); }
   }
@@ -141,12 +187,24 @@
     document.body.classList.toggle('elder', elder);
     document.body.classList.toggle('hc', !!S.highContrast || elder);
     document.body.dataset.theme = S.theme || 'green';
-    document.body.dataset.mode = S.themeMode || 'dark';
-    document.body.classList.toggle('amoled', !!S.amoled && (S.themeMode || 'dark') === 'dark');
+    const systemDark = !!(window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches);
+    const effectiveMode = S.themeMode === 'system' ? (systemDark ? 'dark' : 'light') : (S.themeMode || 'system');
+    document.body.dataset.mode = effectiveMode;
+    document.body.classList.toggle('amoled', !!S.amoled && effectiveMode === 'dark');
+    document.body.classList.toggle('reduce-motion', !!S.reduceMotion);
+    document.body.classList.toggle('compact', !!S.compactHome);
+    // Friday class for special styling
+    try {
+      const p = place();
+      const cnow = cityNow(p.tz);
+      const wd = new Date(cnow.getTime()).getUTCDay(); // 0=Sun ... 5=Fri
+      // JS UTC day: need local-ish; cityNow shifts so getUTCDay reflects city
+      document.body.classList.toggle('friday', wd === 5 && S.highlightFriday !== false);
+    } catch (e) {}
     // elder has its own scale in CSS; normal uses fontScale
     document.documentElement.style.setProperty('--fs', elder ? 1 : (S.fontScale || 1));
     const meta = document.querySelector('meta[name="theme-color"]');
-    if (meta) meta.content = (S.themeMode === 'light') ? '#f4f0e8' : '#140f0a';
+    if (meta) meta.content = effectiveMode === 'light' ? '#f4f0e8' : '#140f0a';
   }
   const dayStart = (p, offset) => { const c = cityNow(p.tz); return Date.UTC(c.getUTCFullYear(), c.getUTCMonth(), c.getUTCDate()) + (offset || 0) * 86400000; };
 
@@ -171,28 +229,106 @@
     const c = cityNow(p.tz);
     const fmt = (loc, o, d) => new Intl.DateTimeFormat(loc, Object.assign({ timeZone: 'UTC' }, o)).format(d);
     const shamsi = fmt('fa-IR-u-ca-persian', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }, c);
-    const h = new Date(c.getTime() + (S.hijriOffset || 0) * 86400000);
-    const qamari = fmt('fa-IR-u-ca-islamic-civil', { day: 'numeric', month: 'long', year: 'numeric' }, h);
+    // Hijri: islamic-civil is tabular and often 1 day behind common Iranian/announced dates.
+    // Default offset +1; user can fine-tune in settings. Umm al-Qura used when available.
+    const h = new Date(c.getTime() + (S.hijriOffset != null ? S.hijriOffset : 1) * 86400000);
+    let qamari, lp;
+    try {
+      qamari = fmt('fa-IR-u-ca-islamic-umalqura', { day: 'numeric', month: 'long', year: 'numeric' }, h);
+      lp = new Intl.DateTimeFormat('en-US-u-ca-islamic-umalqura', { timeZone: 'UTC', month: 'numeric', day: 'numeric' }).formatToParts(h);
+    } catch (e) {
+      qamari = fmt('fa-IR-u-ca-islamic-civil', { day: 'numeric', month: 'long', year: 'numeric' }, h);
+      lp = new Intl.DateTimeFormat('en-US-u-ca-islamic-civil', { timeZone: 'UTC', month: 'numeric', day: 'numeric' }).formatToParts(h);
+    }
     const greg = fmt('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }, c);
-    // numeric parts for occasions
     const sp = new Intl.DateTimeFormat('en-US-u-ca-persian', { timeZone: 'UTC', month: 'numeric', day: 'numeric' }).formatToParts(c);
-    const lp = new Intl.DateTimeFormat('en-US-u-ca-islamic-civil', { timeZone: 'UTC', month: 'numeric', day: 'numeric' }).formatToParts(h);
     const get = (parts, type) => (parts.find(x => x.type === type) || {}).value;
     const shamsiMD = get(sp, 'month') + '/' + get(sp, 'day');
     const lunarMD = get(lp, 'month') + '/' + get(lp, 'day');
     return { shamsi, qamari, greg, shamsiMD, lunarMD };
   }
 
+
+  /* ---------- prayer completion & daily helpers ---------- */
+  function todayKey(p) {
+    const c = cityNow(p ? p.tz : place().tz);
+    return c.getUTCFullYear() + '-' + (c.getUTCMonth() + 1) + '-' + c.getUTCDate();
+  }
+  function ensurePrayedDay() {
+    const k = todayKey();
+    if (S.prayedDate !== k) {
+      S.prayedToday = {};
+      S.prayedDate = k;
+    }
+  }
+  function isPrayed(key) {
+    ensurePrayedDay();
+    return !!(S.prayedToday && S.prayedToday[key]);
+  }
+  function togglePrayed(key) {
+    ensurePrayedDay();
+    if (!S.prayedToday) S.prayedToday = {};
+    S.prayedToday[key] = !S.prayedToday[key];
+    // simple streak: if all 5 azan prayers marked, advance streak
+    const all = AZAN.every(k => S.prayedToday[k]);
+    if (all) {
+      const k = todayKey();
+      if (S.streak.last !== k) {
+        S.streak.days = (S.streak.days || 0) + 1;
+        S.streak.last = k;
+      }
+    }
+    save(false);
+    if (S.hapticHome !== false) vib('tap');
+    return S.prayedToday[key];
+  }
+  function prayedCount() {
+    ensurePrayedDay();
+    return AZAN.filter(k => S.prayedToday[k]).length;
+  }
+  function kaabaDistanceKm(lat, lng) {
+    // Haversine to Kaaba approx 21.4225, 39.8262
+    const R = 6371, toR = Math.PI / 180;
+    const dLat = (21.4225 - lat) * toR, dLng = (39.8262 - lng) * toR;
+    const a = Math.sin(dLat/2)**2 + Math.cos(lat*toR)*Math.cos(21.4225*toR)*Math.sin(dLng/2)**2;
+    return Math.round(2 * R * Math.asin(Math.sqrt(a)));
+  }
+  function shareTextTimes() {
+    const p = place(), t = timesFor(dayStart(p, 0), p), d = dates(p);
+    let s = 'اوقات شرعی ' + p.name + '\n' + d.shamsi + '\n' + d.qamari + '\n\n';
+    PRAYERS.forEach(([k, n]) => { s += n + ': ' + hm(t[k].min) + '\n'; });
+    if (t.imsak) s += 'امساک: ' + hm(t.imsak.min) + '\n';
+    s += '\n— افق شرعی';
+    return s;
+  }
+  function copyToClipboard(text) {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      return navigator.clipboard.writeText(text).then(() => true).catch(() => false);
+    }
+    try {
+      const ta = document.createElement('textarea');
+      ta.value = text; document.body.appendChild(ta); ta.select();
+      const ok = document.execCommand('copy'); document.body.removeChild(ta);
+      return Promise.resolve(ok);
+    } catch (e) { return Promise.resolve(false); }
+  }
+
   /* ---------- scheduling (hands a 45-day event list to Kotlin) ---------- */
   function buildEvents() {
     const p = place(), out = [], now = Date.now();
+    const preEn = S.preEnabled || {};
     for (let i = 0; i < 45; i++) {
       const t = timesFor(dayStart(p, i), p);
       for (const k of AZAN) {
         if (!S.enabled[k]) continue;
         const ms = t[k].ms;
         if (ms < now - 120000) continue;
-        if (S.pre > 0 && ms - S.pre * 60000 > now) out.push({ t: ms - S.pre * 60000, type: 'pre', key: k, name: SHORT[k], min: S.pre });
+        // Advanced pre: global minutes, optional different Fajr minutes, per-prayer toggle
+        let preMin = S.pre || 0;
+        if (k === 'fajr' && S.preFajr != null && S.preFajr !== '') preMin = parseInt(S.preFajr, 10) || 0;
+        const preOn = preMin > 0 && (preEn[k] !== false);
+        if (preOn && ms - preMin * 60000 > now)
+          out.push({ t: ms - preMin * 60000, type: 'pre', key: k, name: SHORT[k], min: preMin });
         out.push({ t: ms, type: 'azan', key: k, name: SHORT[k] });
       }
     }
@@ -203,15 +339,29 @@
     if (!Native.available()) return;
     const p = place();
     const tms = timesFor(dayStart(p, 0), p);
+    const d = dates(p);
     const today = {};
     PRAYERS.forEach(([k]) => { today[k] = hm(tms[k].min); });
     if (tms.imsak) today.imsak = hm(tms.imsak.min);
+    const occ = (typeof CONTENT !== 'undefined' && CONTENT.occFor) ? CONTENT.occFor(d.shamsiMD, d.lunarMD) : [];
     Native.schedule(buildEvents(), {
       path: muezzin().path || '',
       volume: S.volume,
       city: p.name,
       today: today,
-      method: S.method || 'tehran'
+      method: S.method || 'tehran',
+      vibrate: !!S.vibrateAzan,
+      shamsi: d.shamsi,
+      qamari: d.qamari,
+      shamsiMD: d.shamsiMD,
+      lunarMD: d.lunarMD,
+      occasions: occ.map(o => o.text).slice(0, 3),
+      smartNotif: S.smartNotif !== false,
+      quietHours: !!S.quietHours,
+      quietStart: S.quietStart || 23,
+      quietEnd: S.quietEnd || 5,
+      ramadanHint: !!(S.ramadanMode && S.ramadanHint !== false),
+      vibratePre: S.vibratePre !== false
     });
   }
 
@@ -227,8 +377,17 @@
   let stack = ['home'];
   function show(pg) {
     if (page === 'qibla' && pg !== 'qibla') stopQiblaCompass();
-    page = pg; cal.first = null; render(); window.scrollTo(0, 0);
+    page = pg; cal.first = null; render(); window.scrollTo(0, 0); syncAwake(pg);
     if (app.classList) { app.classList.remove('enter'); void app.offsetWidth; app.classList.add('enter'); }
+  }
+  /* screen stays on only in the tasbih / rak'at pages (never while the azan screen manages it itself) */
+  let pageAwake = false;
+  function syncAwake(pg) {
+    const want = (pg === 'dhikr' && S.dhikrAwake !== false) || pg === 'rakat';
+    if (want === pageAwake) return;
+    pageAwake = want;
+    if (!want && typeof ov !== 'undefined' && !ov.hidden) return;
+    Native.keepAwake(want);
   }
   function go(pg) {
     if (pg === page) return show(pg);
@@ -244,6 +403,14 @@
   function goRoot(pg) { stack = [pg]; try { history.replaceState({ i: 0 }, ''); } catch (e) {} show(pg); }
   function goBack(fb) { if (stack.length > 1) history.back(); else go(fb || 'home'); }
   window.go = go; window.goBack = goBack;
+  // Called by MainActivity for the physical/system Back button.
+  // At the root screen it deliberately does nothing instead of exiting.
+  window.handleAndroidBack = function () {
+    if (!ov.hidden) { closeAzan(); return true; }
+    if (stack.length > 1) { goBack(); return true; }
+    if (page !== 'home' && page !== 'setup') { goRoot('home'); return true; }
+    return true;
+  };
 
   function header(title, back) {
     return '<header class="top">' +
@@ -252,8 +419,8 @@
       (back ? '' : '<button class="ibtn" onclick="go(\'settings\')" aria-label="تنظیمات">' + ic('gear') + '</button>') +
       '</header>';
   }
-  function toggle(id, on) {
-    return '<button class="sw' + (on ? ' on' : '') + '" role="switch" aria-checked="' + on + '" data-sw="' + id + '"><span></span></button>';
+  function toggle(id, on, attr) {
+    return '<button class="sw' + (on ? ' on' : '') + '" role="switch" aria-checked="' + !!on + '" data-' + (attr || 'sw') + '="' + id + '"><span></span></button>';
   }
 
   /* ---------- calendar: month grid with Shamsi (big), Gregorian + Hijri (small) and occasions ---------- */
@@ -285,7 +452,9 @@
     for (let i = 0; i < len; i++) {
       const ms = first + i * DAYMS, hp = parts(_fH, ms + off), wd = new Date(ms).getUTCDay();
       const oc = occOf({ month: sp0.month, day: i + 1 }, hp);
-      cells += '<button class="cday' + (wd === 5 ? ' fri' : '') + (oc.length ? ' occ' : '') + (ms === today ? ' today' : '') + (ms === cal.sel ? ' sel' : '') + '" data-cal-day="' + ms + '">' +
+      const isHol = oc.some(o => o.holiday);
+      const isFri = wd === 5;
+      cells += '<button class="cday' + (isFri ? ' fri' : '') + (oc.length ? ' occ' : '') + (isHol ? ' hol' : '') + (ms === today ? ' today' : '') + (ms === cal.sel ? ' sel' : '') + '" data-cal-day="' + ms + '">' +
         '<b>' + fa(i + 1) + '</b><small><span>' + new Date(ms).getUTCDate() + '</span><span>' + fa(hp.day) + '</span></small></button>';
     }
     const sel = cal.sel, sp = parts(_fP, sel), hs = parts(_fH, sel + off), oc = occOf(sp, hs);
@@ -294,9 +463,9 @@
       '<div class="t"><b>' + SH_M[sp0.month - 1] + ' ' + fa(sp0.year) + '</b><small>' + esc(hSub) + ' · <span dir="ltr">' + esc(gSub) + '</span></small></div>' +
       '<button class="cal-nav" data-cal-nav="1" aria-label="ماه بعد">' + ic('chev') + '</button></div>' +
       '<div class="cal-g">' + WK.map((w, i) => '<span class="cal-w' + (i === 6 ? ' fri' : '') + '">' + w + '</span>').join('') + cells + '</div>' +
-      '<p class="hint cal-leg">اعداد کوچک هر روز: میلادی (چپ) · قمری (راست)</p>' +
+      '<p class="hint cal-leg">اعداد کوچک: میلادی · قمری · <span class="leg-hol">تعطیل</span> · <span class="leg-fri">جمعه</span></p>' +
       '<div class="cal-d"><b>' + esc(a.shamsi) + '</b><div>' + esc(q) + '</div><div dir="ltr" style="text-align:right">' + esc(a.gregEn) + '</div>' +
-      (oc.length ? '<div>' + oc.map(o => '<span class="chip">' + esc(o.text) + '</span>').join('') + '</div>' : '') + '</div>' +
+      (oc.length ? '<div>' + oc.map(o => '<span class="chip' + (o.holiday ? ' chip-hol' : '') + '">' + (o.holiday ? 'تعطیل · ' : '') + esc(o.text) + '</span>').join('') + '</div>' : '') + '</div>' +
       ((monthFirst(today) !== first || sel !== today) ? '<button class="btn alt wide" data-cal-today="1" style="margin-top:10px">برگشت به امروز</button>' : '');
   }
   function refreshCal() { const h = document.getElementById('calHost'); if (h) h.innerHTML = calHtml(); }
@@ -325,9 +494,18 @@
     const extra = [];
     if (S.showImsak && tms.imsak) extra.push(['امساک', tms.imsak.min]);
     if (S.showMidnight && tms.midnight) extra.push(['نیمه‌شب شرعی', tms.midnight.min]);
-    const rows = PRAYERS.map(([k]) =>
-      '<div class="trow' + (nx && nx.key === k ? ' on' : (tms[k].ms <= now ? ' past' : '')) + '"><i>' + ICON[k] + '</i><span>' + SHORT[k] + '</span><b>' + hm(tms[k].min) + '</b></div>'
-    ).join('') + extra.map(([n, min]) => '<div class="trow dim"><span>' + n + '</span><b>' + hm(min) + '</b></div>').join('');
+    ensurePrayedDay();
+    const pc = prayedCount();
+    const rowHtml = PRAYERS.map(([k]) => {
+      const done = isPrayed(k);
+      const cls = (nx && nx.key === k ? ' on' : (tms[k].ms <= now ? ' past' : '')) + (done ? ' done' : '');
+      const check = AZAN.includes(k) ? '<button class="pray-check' + (done ? ' on' : '') + '" data-pray="' + k + '" aria-label="علامت نماز">' + (done ? '✓' : '○') + '</button>' : '';
+      return '<div class="trow' + cls + '"><i>' + ICON[k] + '</i><span>' + SHORT[k] + '</span>' + check + '<b>' + hm(tms[k].min) + '</b></div>';
+    });
+    /* بنر تپسل «بین اوقات نماز» — بعد از ردیف سوم (اذان ظهر) درج می‌شود */
+    const rows = rowHtml.slice(0, 3).join('') + adSlotHtml('adSlotHome') + rowHtml.slice(3).join('') +
+      extra.map(([n, min]) => '<div class="trow dim"><span>' + n + '</span><b>' + hm(min) + '</b></div>').join('');
+    const goalHtml = S.dailyGoal !== false ? '<div class="goal-bar"><span>امروز ' + fa(pc) + ' از ۵ نماز</span><div class="goal-track"><div class="goal-fill" style="width:' + (pc*20) + '%"></div></div></div>' : '';
     const q = (id, icn, t, main) => '<button class="qbtn' + (main ? ' main' : '') + '"' + (id === 'namazMode' ? ' id="namazMode"' : ' onclick="go(\'' + id + '\')"') + '><i>' + icn + '</i><span>' + t + '</span></button>';
     app.innerHTML =
       '<header class="hbar">' +
@@ -344,10 +522,35 @@
         (S.showProgress !== false ? '<div class="prog-wrap"><div class="prog-bar" id="progBar"></div><div class="prog-lbl" id="progLbl"></div></div>' : '') +
       '</section>' +
       '<div class="qrow">' + q('namazMode', ic('check'), 'نماز', true) + q('dhikr', ic('moon'), 'ذکر') + q('duas', ic('mic'), 'ادعیه') + q('week', ic('clock'), 'اوقات هفته') + '</div>' +
+      goalHtml +
       '<h2>اوقات امروز</h2><section class="tlist">' + rows + '</section>' +
-      '<div id="adSlotHome" class="ad-anchor" aria-label="تبلیغ"></div>' +
+      '<div class="quick home-actions"><button class="btn alt" id="copyTimes">کپی اوقات</button><button class="btn alt" id="shareTimesHome">اشتراک</button></div>' +
       '<h2>تقویم</h2><section class="card cal" id="calHost">' + calHtml() + '</section>';
     tick();
+    // bind prayer checks
+    app.querySelectorAll('[data-pray]').forEach(btn => {
+      btn.addEventListener('click', e => {
+        e.stopPropagation();
+        const k = btn.getAttribute('data-pray');
+        const on = togglePrayed(k);
+        btn.classList.toggle('on', on);
+        btn.textContent = on ? '✓' : '○';
+        const row = btn.closest('.trow');
+        if (row) row.classList.toggle('done', on);
+        const fill = document.querySelector('.goal-fill');
+        const label = document.querySelector('.goal-bar span');
+        if (fill) fill.style.width = (prayedCount()*20) + '%';
+        if (label) label.textContent = 'امروز ' + fa(prayedCount()) + ' از ۵ نماز';
+      });
+    });
+    const ct = document.getElementById('copyTimes');
+    if (ct) ct.onclick = () => copyToClipboard(shareTextTimes()).then(ok => { if (ok) { ct.textContent = 'کپی شد ✓'; setTimeout(() => ct.textContent = 'کپی اوقات', 1500); } });
+    const sh = document.getElementById('shareTimesHome');
+    if (sh) sh.onclick = () => {
+      const text = shareTextTimes();
+      if (navigator.share) navigator.share({ text }).catch(() => copyToClipboard(text));
+      else copyToClipboard(text).then(() => { sh.textContent = 'کپی شد'; setTimeout(() => sh.textContent = 'اشتراک', 1500); });
+    };
   }
   function renderTimes() {
     const p = place(), t = timesFor(dayStart(p, 0), p), t2 = timesFor(dayStart(p, 1), p);
@@ -376,7 +579,7 @@
       ['اطلاعات', [
         ['backup', 'save', 'پشتیبان‌گیری', 'خروجی و بازیابی'],
         ['privacy', 'shield', 'حریم خصوصی', 'بدون ارسال داده'],
-        ['about', 'info', 'درباره برنامه', 'نسخه ' + fa(APP_VERSION)]]]
+        ['about', 'info', 'درباره برنامه', 'معرفی و راهنما']]]
     ];
     app.innerHTML = header('تنظیمات', 'home') + G.map(([t, rows]) =>
       '<div class="sgroup-t">' + t + '</div><section class="sgroup">' +
@@ -422,6 +625,7 @@
   function renderAzan() {
     app.innerHTML = header('تنظیمات اذان', 'settings') +
       '<section class="menu">' + AZAN.map(k => '<div class="mi"><span><b>' + NAME[k] + '</b><small>پخش خودکار</small></span>' + toggle(k, S.enabled[k]) + '</div>').join('') + '</section>' +
+      '<section class="menu"><div class="mi"><span><b>ویبره هنگام شروع اذان</b><small>یک لرزش ملایم همراه با اذان</small></span><button class="sw' + (S.vibrateAzan ? ' on' : '') + '" data-vibazan="1"></button></div></section>' +
       '<section class="form"><label>میزان صدا: <b id="volV">' + fa(Math.round(S.volume * 100)) + '٪</b><input id="vol" type="range" min="10" max="100" value="' + Math.round(S.volume * 100) + '"></label>' +
       '<button class="btn" id="tPlay">' + ic('play') + ' آزمایش صدای اذان</button><button class="btn alt" id="tStop">' + ic('stop') + ' توقف صدا</button><div id="aMsg" class="hint"></div></section>' +
       '<h2>اصلاح دقیقه اوقات</h2><p class="hint">اگر اوقات شهر شما با تقویم رسمی چند دقیقه فرق داشت، همین‌جا هر وقت را کم یا زیاد کنید. اذان و شمارش معکوس هم با همین اصلاح انجام می‌شود.</p><section class="list">' +
@@ -436,12 +640,35 @@
       '<button class="btn wide" id="mAdd">' + ic('plus') + ' افزودن مؤذن دلخواه</button><button class="btn alt wide" id="mStop">' + ic('stop') + ' توقف صدا</button><div id="mMsg" class="hint"></div>';
   }
   function renderNotif() {
+    const preEn = S.preEnabled || {};
+    const preFajrVal = (S.preFajr == null || S.preFajr === '') ? '' : String(S.preFajr);
     app.innerHTML = header('اعلان‌ها', 'settings') +
-      '<section class="form"><label>یادآوری قبل از اذان<select id="pre">' +
-      [0, 5, 10, 15, 20, 30].map(v => '<option value="' + v + '"' + (S.pre === v ? ' selected' : '') + '>' + (v ? fa(v) + ' دقیقه قبل' : 'خاموش') + '</option>').join('') + '</select></label>' +
+      '<h2>یادآوری قبل از اذان</h2>' +
+      '<section class="form"><label>زمان پیش‌فرض<select id="pre">' +
+      [0, 5, 10, 15, 20, 30, 45, 60].map(v => '<option value="' + v + '"' + (S.pre === v ? ' selected' : '') + '>' + (v ? fa(v) + ' دقیقه قبل' : 'خاموش') + '</option>').join('') + '</select></label>' +
+      '<label>فقط برای اذان صبح (اختیاری)<select id="preFajr">' +
+      '<option value=""' + (preFajrVal === '' ? ' selected' : '') + '>همان پیش‌فرض</option>' +
+      [5, 10, 15, 20, 30, 45, 60].map(v => '<option value="' + v + '"' + (preFajrVal === String(v) ? ' selected' : '') + '>' + fa(v) + ' دقیقه قبل</option>').join('') +
+      '</select></label></section>' +
+      '<h2>یادآوری برای هر وقت</h2><section class="menu">' +
+      AZAN.map(k => '<div class="mi"><span><b>' + NAME[k] + '</b><small>یادآوری قبل از این اذان</small></span><button class="sw' + (preEn[k] !== false ? ' on' : '') + '" data-preen="' + k + '"></button></div>').join('') +
+      '</section>' +
+      '<h2>اعلان هوشمند</h2><section class="menu">' +
+        '<div class="mi"><span><b>اعلان هوشمند</b><small>شهر، ساعت اذان و متن مناسب هر وقت</small></span><button class="sw' + (S.smartNotif !== false ? ' on' : '') + '" data-smartn="1"></button></div>' +
+        '<div class="mi"><span><b>ویبره یادآوری</b><small>لرزش هنگام اعلان قبل از اذان</small></span><button class="sw' + (S.vibratePre !== false ? ' on' : '') + '" data-vibpre="1"></button></div>' +
+        '<div class="mi"><span><b>ساعات سکوت شب</b><small>یادآوری غیرصبح در شب قطع شود</small></span><button class="sw' + (S.quietHours ? ' on' : '') + '" data-quiet="1"></button></div>' +
+        '<div class="mi"><span><b>راهنمای رمضان</b><small>متن اضافه برای مغرب</small></span><button class="sw' + (S.ramadanHint !== false ? ' on' : '') + '" data-ramhint="1"></button></div>' +
+      '</section>' +
+      (S.quietHours ? '<section class="form"><label>شروع سکوت<select id="qStart">' +
+        Array.from({length:24},(_,h)=>'<option value="'+h+'"'+((S.quietStart||23)===h?' selected':'')+'>'+fa(h)+'</option>').join('') +
+        '</select></label><label>پایان سکوت<select id="qEnd">' +
+        Array.from({length:24},(_,h)=>'<option value="'+h+'"'+((S.quietEnd||5)===h?' selected':'')+'>'+fa(h)+'</option>').join('') +
+        '</select></label></section>' : '') +
+      '<h2>مجوزها و باتری</h2><section class="form">' +
       '<div id="st" class="hint">در حال بررسی وضعیت…</div>' +
       '<button class="btn" id="nAsk">اجازه نمایش اعلان</button><button class="btn" id="nBat">خارج کردن از محدودیت باتری</button><button class="btn alt" id="nApp">تنظیمات برنامه در اندروید</button></section>' +
-      '<p class="hint">در گوشی‌های سامسونگ، شیائومی، هواوی، اوپو و … علاوه بر این، گزینه‌های «شروع خودکار / Autostart» و «بدون محدودیت باتری» را برای افق شرعی فعال کنید. اگر برنامه را از «توقف اجباری (Force Stop)» ببندید، اندروید تا باز شدن دوباره برنامه اجازه اجرای هیچ زمان‌بندی را نمی‌دهد.</p>';
+      '<p class="hint">اعلان هوشمند متن کامل‌تری نشان می‌دهد. ساعات سکوت فقط یادآوری قبل از اذان را محدود می‌کند؛ خودِ اذان همیشه پخش می‌شود. برای هر وقت می‌توانید یادآوری را جدا خاموش کنید.</p>' +
+      '<p class="hint">در سامسونگ، شیائومی، هواوی و اوپو گزینه «شروع خودکار» و «بدون محدودیت باتری» را فعال کنید.</p>';
     Native.status().then(s => {
       const el = document.getElementById('st'); if (!el) return;
       if (!s) { el.textContent = 'این صفحه فقط روی گوشی وضعیت را نشان می‌دهد.'; return; }
@@ -452,7 +679,7 @@
   function renderAbout() {
     app.innerHTML = header('درباره برنامه', 'settings') +
       '<section class="card"><h3>افق شرعی</h3>' +
-      '<p><b>نسخه ' + fa(APP_VERSION) + '</b> · آخرین به‌روزرسانی: آبان ۱۴۰۵</p>' +
+      '' +
       '<p>افق شرعی یک برنامه کاملاً فارسی و راست‌چین برای نمایش اوقات شرعی، پخش اذان، قبله‌نما و ابزارهای عبادی است. رابط کاربری بزرگ، ساده و مناسب سالمندان طراحی شده تا همه بتوانند به راحتی از آن استفاده کنند.</p>' +
       '<p>روش پیش‌فرض محاسبه اوقات، <b>مؤسسه ژئوفیزیک دانشگاه تهران</b> است که برای شهرهای ایران دقیق‌ترین نتیجه را می‌دهد. در تنظیمات می‌توانید روش‌های دیگر (MWL، ISNA، مصر، کراچی، ام‌القرى، جعفری و …) را انتخاب کنید.</p>' +
       '<p class="hint">اوقات محاسبه‌شده را حتماً با تقویم رسمی یا اعلام محلی شهر خود مقایسه کنید. اختلاف ۱ تا ۳ دقیقه‌ای به‌خاطر ارتفاع، افق و روش محاسبه کاملاً طبیعی است. از بخش «اصلاح دقیقه» در تنظیمات اذان می‌توانید هر وقت را جداگانه جلو یا عقب ببرید.</p>' +
@@ -467,7 +694,9 @@
       '<li>ویجت صفحه اصلی، پشتیبان‌گیری و حالت رمضان</li>' +
       '</ul>' +
       '<p class="hint">برنامه کاملاً آفلاین کار می‌کند و هیچ داده‌ای به سرور ارسال نمی‌شود. همه تنظیمات و اطلاعات فقط روی گوشی شما ذخیره می‌گردند.</p>' +
-      '<div class="form"><label>اصلاح تاریخ قمری<select id="hj">' + [-2, -1, 0, 1, 2].map(v => '<option value="' + v + '"' + (S.hijriOffset === v ? ' selected' : '') + '>' + (v > 0 ? '+' : '') + fa(v) + ' روز</option>').join('') + '</select></label></div></section>' +
+      '<div class="form"><label>اصلاح تاریخ قمری (اگر یک روز عقب/جلو است)<select id="hj">' + [-3,-2,-1,0,1,2,3].map(v => '<option value="' + v + '"' + ((S.hijriOffset != null ? S.hijriOffset : 1) === v ? ' selected' : '') + '>' + (v > 0 ? '+' : '') + fa(v) + ' روز' + (v === 1 ? ' (پیشنهادی)' : '') + '</option>').join('') + '</select></label><p class="hint">تقویم قمری جدولی گاهی یک روز با اعلام رسمی فرق دارد. پیش‌فرض +۱ روز است.</p></div></section>' +
+      '<section class="card"><h3>هشدار — نسخه رسمی</h3>' +
+      '<p class="hint">فقط نسخه رسمی افق شرعی را از استورهای رسمی <b>کافه بازار</b> و <b>مایکت</b> نصب کنید. نسخه‌های غیررسمی ممکن است ویروسی یا دستکاری‌شده باشند و <b>تیم برنامه‌نویسی B-Z هیچ مسئولیتی در قبال نسخه‌های غیررسمی و ویروسی نمی‌پذیرد</b>.</p></section>' +
       '<section class="card"><h3>ما را دنبال کنید</h3>' +
       '<p class="hint" style="margin:0 0 10px">با دنبال کردن صفحهٔ ما در گیت‌هاب، از نسخه‌های جدید زودتر باخبر می‌شوید و با ستاره‌دادن به پروژه، به بهتر شدن افق شرعی کمک می‌کنید.</p>' +
       '<button class="btn wide" id="ghOpen" type="button">⭐ دنبال کردن در گیت‌هاب</button></section>' +
@@ -544,8 +773,8 @@
         status.className = 'hint' + (aligned && flat ? ' q-ok' : '');
         const lv = document.getElementById('qLevel');
         if (lv) lv.textContent = flat ? 'تراز افقی ✓' : 'کج — صاف کنید';
-        if (aligned && flat && S.vibrateQibla && navigator.vibrate && Date.now() - lastVib > 2500) {
-          navigator.vibrate([40, 30, 40]);
+        if (aligned && flat && S.vibrateQibla && Date.now() - lastVib > 2500) {
+          vib('qibla');
           lastVib = Date.now();
         }
       }
@@ -566,31 +795,36 @@
   function renderQibla() {
     const p = place();
     const degTrue = PT.qibla(p.lat, p.lng);
-    const degMag = PT.qiblaMagnetic ? PT.qiblaMagnetic(p.lat, p.lng) : degTrue;
-    const dist = PT.qiblaDistance ? PT.qiblaDistance(p.lat, p.lng) : null;
-    const degFa = fa(Math.round(degTrue));
+    const decl = PT.magneticDeclination ? PT.magneticDeclination(p.lat, p.lng) : 0;
+    const degMag = PT.qiblaMagnetic ? PT.qiblaMagnetic(p.lat, p.lng) : ((degTrue - decl) + 360) % 360;
+    const dist = PT.qiblaDistance ? PT.qiblaDistance(p.lat, p.lng) : (S.showKaabaDist !== false ? kaabaDistanceKm(p.lat, p.lng) : null);
+    const degFa = fa(degTrue.toFixed(1));
     const startBrng = degTrue;
+    const basis = S.custom ? 'موقعیت دقیق (GPS)' : 'شهر ' + p.name;
     app.innerHTML = header('قبله‌نما', 'home') +
       '<section class="card qibla-card">' +
+      '<div class="qibla-city">' + ic('pin') + esc(p.name) + '</div>' +
       '<div class="qibla-stage"><div class="qibla-arrow" id="qArrow"></div></div>' +
       '<div class="qibla-deg" id="qLive">' + degFa + '°</div>' +
       '<p class="hint" id="qStatus">در حال اتصال به قطب‌نما… گوشی را صاف و افقی نگه دارید</p>' +
       '<p class="hint" id="qLevel">تراز افقی…</p></section>' +
       '<section class="card">' +
-      '<div class="row"><span>زاویه حقیقی از شمال</span><b>' + degFa + '°</b></div>' +
-      '<div class="row"><span>زاویه مغناطیسی (قطب‌نما)</span><b>' + fa(Math.round(degMag)) + '°</b></div>' +
+      '<div class="row"><span>قبله از شهر ' + esc(p.name) + ' (شمال حقیقی)</span><b>' + degFa + '°</b></div>' +
+      '<div class="row"><span>زاویه قطب‌نما (شمال مغناطیسی)</span><b>' + fa(degMag.toFixed(1)) + '°</b></div>' +
+      '<div class="row"><span>انحراف مغناطیسی (مدل WMM2025)</span><b>' + fa(Math.abs(decl).toFixed(1)) + '° ' + (decl >= 0 ? 'شرقاً' : 'غرباً') + '</b></div>' +
       (dist != null ? '<div class="row"><span>فاصله تا کعبه</span><b>' + fa(dist) + ' کیلومتر</b></div>' : '') +
-      '<div class="row"><span>موقعیت</span><b>' + esc(p.name) + '</b></div></section>' +
+      '<div class="row"><span>مبنای محاسبه</span><b>' + esc(basis) + '</b></div>' +
+      '<div class="row"><span>مختصات</span><b dir="ltr">' + (Math.round(p.lat * 10000) / 10000) + ', ' + (Math.round(p.lng * 10000) / 10000) + '</b></div></section>' +
       '<section class="form">' +
       '<label>کالیبراسیون دستی (درجه)<select id="qOff">' +
       [-10,-8,-6,-4,-2,0,2,4,6,8,10].map(v =>
         '<option value="' + v + '"' + ((S.qiblaOffset||0) === v ? ' selected' : '') + '>' +
         (v > 0 ? '+' : '') + fa(v) + '°</option>').join('') +
       '</select></label>' +
-      '<div class="mi"><span><b>جبران انحراف مغناطیسی</b><small>دقیق‌تر برای ایران</small></span>' +
+      '<div class="mi"><span><b>جبران انحراف مغناطیسی</b><small>مدل جهانی WMM2025 — دقیق در همه شهرها</small></span>' +
       '<button class="sw' + (S.useMagDecl !== false ? ' on' : '') + '" data-magdec="1"></button></div>' +
       '</section>' +
-      '<p class="hint">فلش همیشه به سمت قبله قفل است. وقتی فلش بالا باشد و پیام سبز شود، رو به قبله‌اید. از فلز و آهنربا دور بمانید و گوشی را یک‌بار به شکل عدد ۸ بچرخانید تا قطب‌نما کالیبره شود.</p>';
+      '<p class="hint">زاویه قبله دقیقاً از مختصات شهر شما محاسبه می‌شود؛ برای دقت بیشتر در «تنظیمات ← شهر و موقعیت» می‌توانید موقعیت دقیق GPS را ثبت کنید. فلش همیشه به سمت قبله قفل است. وقتی فلش بالا باشد و پیام سبز شود، رو به قبله‌اید. از فلز و آهنربا دور بمانید و گوشی را یک‌بار به شکل عدد ۸ بچرخانید تا قطب‌نما کالیبره شود.</p>';
     setTimeout(() => startQiblaCompass(startBrng), 50);
   }
   function renderDisplay() {
@@ -609,8 +843,8 @@
       scales.map(([v, n]) => '<option value="' + v + '"' + (S.fontScale === v ? ' selected' : '') + '>' + n + '</option>').join('') +
       '</select></label></section>') +
       '<h2>حالت روشن / تاریک</h2><section class="menu">' +
-      [['dark','تاریک'],['light','روشن']].map(([id,n]) =>
-        '<button class="mi' + ((S.themeMode || 'dark') === id ? ' sel' : '') + '" data-thememode="' + id + '"><span><b>تم ' + n + '</b></span><em>' + ((S.themeMode || 'dark') === id ? ic('check') : '') + '</em></button>').join('') +
+      [['system','مطابق تم دستگاه'],['dark','تاریک'],['light','روشن']].map(([id,n]) =>
+        '<button class="mi' + ((S.themeMode || 'system') === id ? ' sel' : '') + '" data-thememode="' + id + '"><span><b>تم ' + n + '</b></span><em>' + ((S.themeMode || 'system') === id ? ic('check') : '') + '</em></button>').join('') +
       '</section>' +
       '<h2>رنگ تاکید</h2><section class="menu">' +
       [['green','سبز'],['blue','آبی'],['sand','خاکی']].map(([id,n]) =>
@@ -619,10 +853,15 @@
       '<section class="menu">' +
         '<div class="mi"><span><b>کنتراست بالا</b><small>متن روشن‌تر</small></span><button class="sw' + (S.highContrast ? ' on' : '') + '" data-hc="1"></button></div>' +
         '<div class="mi"><span><b>سیاه خالص (AMOLED)</b><small>صرفه‌جویی باتری</small></span><button class="sw' + (S.amoled ? ' on' : '') + '" data-amoled="1"></button></div>' +
+        '<div class="mi"><span><b>کاهش حرکت</b><small>انیمیشن کمتر برای راحتی چشم</small></span><button class="sw' + (S.reduceMotion ? ' on' : '') + '" data-rmotion="1"></button></div>' +
+        '<div class="mi"><span><b>خانه فشرده</b><small>فاصله کمتر بین بخش‌ها</small></span><button class="sw' + (S.compactHome ? ' on' : '') + '" data-compact="1"></button></div>' +
+        '<div class="mi"><span><b>هدف روزانه نماز</b><small>نوار پیشرفت ۵ نماز</small></span><button class="sw' + (S.dailyGoal !== false ? ' on' : '') + '" data-dgoal="1"></button></div>' +
+        '<div class="mi"><span><b>هایلایت جمعه</b><small>ظاهر ویژه روز جمعه</small></span><button class="sw' + (S.highlightFriday !== false ? ' on' : '') + '" data-fri="1"></button></div>' +
         '<div class="mi"><span><b>حالت رمضان</b><small>امساک و افطار برجسته</small></span><button class="sw' + (S.ramadanMode ? ' on' : '') + '" data-ramadan="1"></button></div>' +
         '<div class="mi"><span><b>نمایش امساک</b></span><button class="sw' + (S.showImsak ? ' on' : '') + '" data-imsak="1"></button></div>' +
         '<div class="mi"><span><b>نمایش نیمه‌شب شرعی</b></span><button class="sw' + (S.showMidnight ? ' on' : '') + '" data-midn="1"></button></div>' +
         '<div class="mi"><span><b>تکان برای ذکر</b></span><button class="sw' + (S.shakeDhikr ? ' on' : '') + '" data-shake="1"></button></div>' +
+        '<div class="mi"><span><b>ویبره</b><small>ذکرشمار، رکعت‌شمار و قبله‌نما</small></span><button class="sw' + (S.vibrateQibla ? ' on' : '') + '" data-vibsw="1"></button></div>' +
       '</section>';
   }
 
@@ -635,42 +874,108 @@
   }
   function renderPrivacy() {
     app.innerHTML = header('حریم خصوصی', 'settings') +
-      '<section class="card"><h3>سیاست حفظ حریم خصوصی — افق شرعی</h3>' +
-      '<p>این برنامه <b>هیچ داده‌ای به سرور ارسال نمی‌کند</b>. تمام اطلاعات (شهر، تنظیمات اذان، فایل صوتی انتخابی، اصلاحات) فقط روی دستگاه شما و در حافظه محلی برنامه ذخیره می‌شود.</p>' +
-      '<p>موقعیت GPS فقط وقتی خودتان دکمه «موقعیت فعلی» را بزنید استفاده می‌شود و روی دستگاه می‌ماند؛ به اینترنت یا شخص ثالث فرستاده نمی‌شود.</p>' +
-      '<p>اعلان‌ها و سرویس پخش اذان فقط برای عملکرد برنامه لازم هستند و هیچ آمار یا ردیابی جمع‌آوری نمی‌شود.</p>' +
+      '<section class="card"><h3>' + ic('shield') + ' سیاست حفظ حریم خصوصی — افق شرعی</h3>' +
+      '<p>تمام اطلاعات شخصی شما — شهر، اذان‌های انتخابی، تنظیمات، فایل صوتی، قضاها و ذکرها — <b>صددرصد محلی (لوکال)</b> و فقط در حافظه داخلی همین دستگاه ذخیره می‌شود. هیچ سرور و حساب کاربری وجود ندارد و این داده‌ها هرگز از گوشی شما خارج نمی‌شوند.</p>' +
+      '<p>چون داده‌های شما هیچ‌وقت به هیچ سروری نمی‌رود، <b>احتمال هک شدن و افشای اطلاعات شخصی عملاً به صفر می‌رسد</b>. تنها راه دسترسی به داده‌های شما، دسترسی فیزیکی به خود گوشی است.</p>' +
+      '<p>موقعیت GPS فقط وقتی خودتان دکمه «موقعیت فعلی» را بزنید خوانده می‌شود و همان لحظه روی دستگاه به نزدیک‌ترین شهر تبدیل می‌شود؛ هرگز ذخیره یا ارسال نمی‌شود.</p>' +
+      '<p>اعلان‌ها و سرویس پخش اذان فقط برای عملکرد برنامه لازم هستند و هیچ آمار، آنالیتیکس یا ردیابی از شما جمع‌آوری نمی‌شود.</p>' +
       '<p>فایل‌های صوتی اذان که وارد می‌کنید فقط در حافظه خصوصی برنامه کپی می‌شوند.</p>' +
-      '<p class="hint">آخرین به‌روزرسانی: آبان ۱۴۰۵ · نسخه ' + fa(APP_VERSION) + '</p></section>';
+      '<p>حذف برنامه، پاک شدن کامل و همیشگی تمام داده‌هاست.</p>' +
+      '</section>' +
+      '<section class="card"><h3>' + ic('info') + ' تبلیغات تپسل و اینترنت</h3>' +
+      '<p>قابلیت‌های اصلی برنامه (اوقات شرعی، اذان، قبله‌نما، تقویم و ابزارها) مثل قبل <b>کاملاً آفلاین</b> کار می‌کنند؛ بدون اینترنت هیچ چیز از دست نمی‌رود.</p>' +
+      '<p>تنها بخش متصل به اینترنت، <b>بنر تبلیغاتی تپسل در پایین صفحه اذان</b> است. این بنر از شبکه تبلیغاتی تپسل بارگذاری می‌شود و ممکن است شبکه تبلیغاتی از «شناسه تبلیغاتی گوگل» (GAID) برای انتخاب تبلیغ متناسب استفاده کند.</p>' +
+      '<p>برنامه هیچ اطلاعات شخصی، مذهبی یا موقعیتی به تپسل نمی‌فرستد؛ تبلیغ فقط یک تصویر است که از اینترنت می‌آید. اگر اینترنت قطع باشد فقط جای تبلیغ خالی می‌ماند و بقیه برنامه بدون مشکل کار می‌کند.</p>' +
+      '</section>' +
+      '<section class="card"><h3>' + ic('info') + ' هشدار مهم — نسخه رسمی</h3>' +
+      '<p>حتماً <b>نسخه رسمی افق شرعی را از استورهای رسمی کافه بازار و مایکت</b> نصب کنید. نصب فایل APK از گروه‌ها، کانال‌ها و سایت‌های ناشناس خطرناک است.</p>' +
+      '<p>نسخه‌های غیررسمی ممکن است دستکاری‌شده، آلوده به ویروس یا دارای کدهای جاسوسی باشند. <b>تیم برنامه‌نویسی B-Z هیچ مسئولیتی در قبال نسخه‌های غیررسمی و ویروسی نمی‌پذیرد</b> و مسئولیت استفاده از آن‌ها کاملاً بر عهده کاربر است.</p>' +
+      '</section>';
   }
+  /* ---------- first-run wizard: 4 slides — مکان → اعلان‌ها → باتری → اذان ---------- */
+  const OB_STEPS = ['مکان', 'اعلان‌ها', 'باتری', 'اذان'];
   function renderSetup() {
+    const step = Math.max(0, Math.min(OB_STEPS.length - 1, S.obStep || 0));
     const selected = place();
+    const dots = OB_STEPS.map((n, i) => {
+      const cls = i === step ? ' on' : (i < step ? ' done' : '');
+      const inner = i < step ? ic('check') : fa(i + 1);
+      return '<div class="ob-dot' + cls + '"><span class="ob-dot-c">' + inner + '</span><span class="ob-dot-t">' + n + '</span></div>';
+    }).join('');
+    let stepTitle = '', body = '';
+    if (step === 0) {
+      stepTitle = 'شهر و مکان';
+      body = '<section class="card setup-card"><h3>' + ic('pin') + ' شهر خود را انتخاب کنید</h3>' +
+        '<p class="hint">اوقات شرعی، اذان و قبله دقیقاً بر اساس مختصات همین شهر محاسبه می‌شود. شهر را از فهرست انتخاب کنید یا با GPS نزدیک‌ترین شهر خودکار پیدا شود؛ موقعیت شما فقط روی دستگاه می‌ماند و جایی ارسال نمی‌شود.</p>' +
+        '<input id="cSearch" type="search" placeholder="جستجوی شهر یا استان" autocomplete="off">' +
+        '<div class="setup-city-list" id="cList">' +
+        CITIES.slice().sort((p, q) => p.name.localeCompare(q.name, 'fa')).map(x =>
+          '<button class="mi city' + (!S.custom && S.cityId === x.id ? ' sel' : '') + '" data-city="' + x.id + '" data-search="' + x.name + ' ' + x.prov + '">' +
+          '<span><b>' + x.name + '</b><small>استان ' + x.prov + '</small></span><em>' + (!S.custom && S.cityId === x.id ? ic('check') : '') + '</em></button>'
+        ).join('') + '</div>' +
+        '<p class="hint setup-sel">شهر فعلی: <b>' + esc(selected.name) + '</b></p>' +
+        '<button class="btn alt" id="setupGps">' + ic('gps') + ' تشخیص خودکار شهر با GPS</button>' +
+        '<div id="gpsMsg" class="hint"></div></section>';
+    } else if (step === 1) {
+      stepTitle = 'اعلان‌ها';
+      body = '<section class="card setup-card"><h3>' + ic('bell') + ' اجازه نمایش اعلان</h3>' +
+        '<p class="hint">برای نمایش یادآوری‌ها و پخش مطمئن اذان، اجازه اعلان لازم است. بدون این اجازه، اذان فقط وقتی برنامه باز است پخش می‌شود. اگر پنجره اجازه باز شد، «اجازه دادن» را بزنید.</p>' +
+        '<button class="btn" id="nAsk">' + ic('bell') + ' اجازه نمایش اعلان</button>' +
+        '<div id="st" class="hint">وضعیت اعلان پس از درخواست اینجا نمایش داده می‌شود.</div></section>';
+    } else if (step === 2) {
+      stepTitle = 'باتری';
+      body = '<section class="card setup-card"><h3>' + ic('sound') + ' خارج کردن از محدودیت باتری</h3>' +
+        '<p class="hint">اندروید برای صرفه‌جویی باتری ممکن است سرویس اذان را متوقف کند. با دکمه زیر اجازه دهید افق شرعی بدون محدودیت کار کند تا اذان سر وقت پخش شود.</p>' +
+        '<button class="btn alt" id="nBat">خارج کردن از محدودیت باتری</button>' +
+        '<div id="stBat" class="hint">وضعیت باتری پس از تنظیم اینجا نمایش داده می‌شود.</div>' +
+        '<p class="hint">در گوشی‌های سامسونگ، شیائومی، هواوی و اوپو گزینه «شروع خودکار» را هم در تنظیمات فعال کنید.</p></section>';
+    } else {
+      stepTitle = 'انتخاب اذان‌ها';
+      body = '<section class="card setup-card"><h3>' + ic('bell') + ' چه اذان‌هایی را می‌خواهید؟</h3>' +
+        '<p class="hint">هر اذان را روشن کنید تا در ساعت دقیق خودکار پخش شود. هر وقت خواستید از «تنظیمات ← تنظیمات اذان» می‌توانید تغییرش دهید.</p>' +
+        '<section class="menu">' + AZAN.map(k => '<div class="mi"><span><b>' + NAME[k] + '</b><small>پخش خودکار در وقت شرعی</small></span>' + toggle(k, S.enabled[k], 'obazan') + '</div>').join('') + '</section></section>';
+    }
     app.innerHTML =
       '<section class="hero setup-hero"><div class="pill">' + ic('bell') + ' افق شرعی</div>' +
       '<h1 class="setup-title">خوش آمدید</h1>' +
-      '<p class="setup-desc">برای شروع، شهر خود را انتخاب کنید و دسترسی‌های لازم را بدهید تا اذان در زمان مناسب پخش شود.</p></section>' +
-      '<section class="card setup-card"><h3>' + ic('pin') + ' انتخاب شهر</h3>' +
-      '<input id="cSearch" type="search" placeholder="جستجوی شهر یا استان" autocomplete="off">' +
-      '<div class="setup-city-list" id="cList">' +
-      CITIES.slice().sort((p, q) => p.name.localeCompare(q.name, 'fa')).map(x =>
-        '<button class="mi city' + (!S.custom && S.cityId === x.id ? ' sel' : '') + '" data-city="' + x.id + '" data-search="' + x.name + ' ' + x.prov + '">' +
-        '<span><b>' + x.name + '</b><small>استان ' + x.prov + '</small></span><em>' + (!S.custom && S.cityId === x.id ? ic('check') : '') + '</em></button>'
-      ).join('') + '</div>' +
-      '<p class="hint setup-sel">شهر فعلی: <b>' + esc(selected.name) + '</b></p></section>' +
-      '<section class="card setup-card"><h3>' + ic('bell') + ' دسترسی‌ها</h3>' +
-      '<p class="hint">برای پخش اذان و نمایش اعلان، اجازه اعلان‌ها لازم است. دسترسی موقعیت برای تشخیص خودکار شهر استفاده می‌شود و فقط روی دستگاه می‌ماند.</p>' +
-      '<button class="btn" id="nAsk">' + ic('bell') + ' اجازه نمایش اعلان</button>' +
-      '<button class="btn alt" id="nBat">خارج کردن از محدودیت باتری</button>' +
-      '<button class="btn alt" id="setupGps">' + ic('pin') + ' تشخیص شهر با GPS</button>' +
-      '<div id="st" class="hint">وضعیت دسترسی بعد از درخواست نمایش داده می‌شود.</div>' +
-      '<div id="gpsMsg" class="hint"></div></section>' +
-      '<button class="btn wide setup-finish" id="setupDone">شروع استفاده از افق شرعی</button>' +
-      '<p class="hint" style="text-align:center;margin-top:8px">پیش‌فرض: اذان صبح، ظهر و مغرب روشن · یادآوری قبل از اذان خاموش</p>';
-    // به‌روزرسانی وضعیت دسترسی اگر روی گوشی باشیم
+      '<p class="setup-desc">گام ' + fa(step + 1) + ' از ' + fa(OB_STEPS.length) + ' · ' + stepTitle + '</p></section>' +
+      '<div class="ob-dots">' + dots + '</div>' +
+      body +
+      '<div class="ob-nav">' +
+      (step > 0 ? '<button class="btn alt" id="obPrev">' + ic('back') + ' قبلی</button>' : '') +
+      (step < OB_STEPS.length - 1 ? '<button class="btn" id="obNext">بعدی' + ic('chev') + '</button>' : '') +
+      (step === OB_STEPS.length - 1 ? '<button class="btn wide setup-finish" id="setupDone">' + ic('check') + ' شروع استفاده از افق شرعی</button>' : '') +
+      '</div>' +
+      '<p class="hint" style="text-align:center;margin-top:10px">همه داده‌ها فقط روی گوشی شما ذخیره می‌شود؛ برنامه هیچ چیزی به اینترنت ارسال نمی‌کند.</p>';
     if (Native.available()) {
       Native.status().then(s => {
-        const el = document.getElementById('st'); if (!el || !s) return;
-        el.innerHTML = 'اعلان: <b>' + (s.notifications ? 'فعال ✓' : 'غیرفعال') + '</b> · بدون محدودیت باتری: <b>' + (s.ignoringBattery ? 'بله ✓' : 'خیر') + '</b>';
+        if (!s) return;
+        const st = document.getElementById('st');
+        if (st) st.innerHTML = 'اعلان: <b>' + (s.notifications ? 'فعال ✓' : 'غیرفعال') + '</b>';
+        const sb = document.getElementById('stBat');
+        if (sb) sb.innerHTML = 'بدون محدودیت باتری: <b>' + (s.ignoringBattery ? 'بله ✓' : 'خیر') + '</b>' +
+          (s.fullScreen === undefined ? '' : (s.fullScreen ? '' : '<br><button class="btn" id="nFs" style="margin-top:8px">اجازه نمایش روی صفحه قفل</button>'));
       });
+      // درخواست مجوز موقعیت فقط یک‌بار در گام اول؛ در صورت موافقت، شهر نزدیک خودکار انتخاب می‌شود.
+      if (step === 0 && !setupLocationRequested) {
+        setupLocationRequested = true;
+        const doGps = () => {
+          if (!navigator.geolocation) return;
+          navigator.geolocation.getCurrentPosition(pos => {
+            applyGpsPosition(pos.coords.latitude, pos.coords.longitude, document.getElementById('gpsMsg'));
+          }, err => {
+            const gpsMsg = document.getElementById('gpsMsg');
+            if (gpsMsg) gpsMsg.textContent = 'موقعیت دریافت نشد؛ شهر را دستی انتخاب کنید یا دوباره GPS را امتحان کنید.';
+          }, { enableHighAccuracy: true, timeout: 20000, maximumAge: 60000 });
+        };
+        try {
+          if (Native.askLocation) Native.askLocation().then(result => {
+            if (!result || !result.granted || !navigator.geolocation) return;
+            doGps();
+          }).catch(() => {});
+          else doGps();   // نسخه وب: مرورگر خودش اجازه می‌گیرد
+        } catch (e) { /* ignore */ }
+      }
     }
   }
 
@@ -685,17 +990,44 @@
       items.map(([id, icn, title]) => '<button class="tbtn" onclick="go(\'' + id + '\')"><i>' + ic(icn) + '</i><span>' + title + '</span></button>').join('') + '</div>'
     ).join('');
   }
+  /* count inside the current round (دور), total and ring progress */
+  const DK_C = 653.45;
+  function dhikrState() {
+    const tg = S.dhikrTarget === 0 ? 0 : (S.dhikrTarget || 33), n = S.dhikrCount || 0;
+    if (!tg) return { tg, n, cur: n, round: 0, frac: 0 };
+    const round = Math.max(1, Math.ceil(n / tg));
+    const cur = n === 0 ? 0 : n - (round - 1) * tg;
+    return { tg, n, cur, round, frac: cur / tg };
+  }
+  function dhikrUpdate() {
+    const d = dhikrState(), g = id => document.getElementById(id);
+    if (g('dkCount')) g('dkCount').textContent = fa(d.cur);
+    if (g('dkRing')) g('dkRing').style.strokeDashoffset = String(DK_C * (1 - (d.tg ? d.frac : 0)));
+    if (g('dkRound')) g('dkRound').textContent = d.tg ? 'دور ' + fa(d.round) + ' از هدف ' + fa(d.tg) : 'شمارش آزاد (بدون هدف)';
+    if (g('dkTotal')) g('dkTotal').textContent = 'مجموع: ' + fa(d.n);
+  }
   function renderDhikr() {
     const presets = (CONTENT && CONTENT.DHIKR_PRESETS) || [];
+    const TG = [[33, '۳۳'], [34, '۳۴'], [100, '۱۰۰'], [500, '۵۰۰'], [1000, '۱۰۰۰'], [0, 'آزاد']];
+    const cur = S.dhikrTarget === 0 ? 0 : (S.dhikrTarget || 33);
     app.innerHTML = header('ذکرشمار', 'tools') +
-      '<section class="card dhikr-card"><div class="dhikr-count" id="dkCount">' + fa(S.dhikrCount || 0) + '</div>' +
-      '<div class="hint" id="dkName">' + esc(S.dhikrName || 'سبحان الله') + '</div>' +
-      '<div class="hint">هدف: ' + fa(S.dhikrTarget || 33) + '</div>' +
-      '<button class="btn wide dhikr-tap" id="dkTap">بزن برای شمارش</button>' +
-      '<div class="quick"><button class="btn alt" id="dkReset">صفر</button><button class="btn alt" id="dkVib">' + (S.vibrateQibla ? 'ویبره روشن' : 'ویبره خاموش') + '</button></div></section>' +
+      '<section class="card dhikr-card"><div class="dk-name" id="dkName">' + esc(S.dhikrName || 'سبحان الله') + '</div>' +
+      '<button class="dk-tap" id="dkTap" aria-label="شمارش">' +
+        '<svg class="dk-svg" viewBox="0 0 240 240" aria-hidden="true"><circle class="dk-bg" cx="120" cy="120" r="104"/>' +
+        '<circle class="dk-ring" id="dkRing" cx="120" cy="120" r="104" stroke-dasharray="' + DK_C + '" stroke-dashoffset="' + DK_C + '" transform="rotate(-90 120 120)"/></svg>' +
+        '<span class="dk-in"><b class="dhikr-count" id="dkCount">۰</b><span class="dk-lbl">برای شمارش بزنید</span></span></button>' +
+      '<div class="hint" id="dkRound"></div><div class="hint" id="dkTotal"></div>' +
+      '<div class="dk-chips" aria-label="هدف شمارش">' + TG.map(([v, n]) => '<button class="dk-chip' + (v === cur ? ' on' : '') + '" data-dktg="' + v + '">' + n + '</button>').join('') + '</div>' +
+      '<div class="quick"><button class="btn alt" id="dkUndo">' + ic('minus') + ' یکی کم</button><button class="btn alt" id="dkReset">صفر کردن</button></div>' +
+      '<div id="dkMsg" class="hint"></div></section>' +
+      '<section class="menu">' +
+        '<div class="mi"><span><b>ویبره</b><small>با هر شمارش و پایان هر دور</small></span><button class="sw' + (S.vibrateQibla ? ' on' : '') + '" id="dkVib" role="switch" aria-checked="' + !!S.vibrateQibla + '"></button></div>' +
+        '<div class="mi"><span><b>روشن ماندن صفحه</b><small>هنگام ذکر گفتن صفحه خاموش نشود</small></span><button class="sw' + (S.dhikrAwake !== false ? ' on' : '') + '" id="dkAwake" role="switch" aria-checked="' + (S.dhikrAwake !== false) + '"></button></div>' +
+      '</section>' +
       '<h2>انتخاب ذکر</h2><section class="menu">' +
-      presets.map(d => '<button class="mi" data-dk="' + d.id + '"><span><b>' + esc(d.name) + '</b><small>هدف ' + fa(d.target) + '</small></span></button>').join('') +
+      presets.map(d => '<button class="mi' + (S.dhikrName === d.name ? ' sel' : '') + '" data-dk="' + d.id + '"><span><b>' + esc(d.name) + '</b><small>هدف ' + fa(d.target) + '</small></span></button>').join('') +
       '</section>';
+    dhikrUpdate();
   }
   function renderRakat() {
     app.innerHTML = header('رکعت‌شمار', 'tools') +
@@ -860,7 +1192,8 @@ function renderFaq() {
       ['اذان پخش نمی‌شود؟', '۱) اعلان‌ها را در تنظیمات گوشی مجاز کنید. ۲) محدودیت باتری را برای افق شرعی بردارید. ۳) در شیائومی، هواوی و سامسونگ گزینه «شروع خودکار» یا Auto-start را روشن کنید. ۴) برنامه را Force Stop نکنید. ۵) صدای گوشی را چک کنید و حالت بی‌صدا را خاموش کنید.'],
       ['اوقات شرعی چند دقیقه با تقویم رسمی فرق دارد؟', 'روش محاسبه را در تنظیمات عوض کنید (پیش‌فرض: مؤسسه ژئوفیزیک تهران). از «اصلاح دقیقه» برای هر وقت استفاده کنید. ارتفاع محل، افق و جداول رسمی گاهی ۱ تا ۳ دقیقه اختلاف طبیعی دارند.'],
       ['قبله‌نما دقیق نیست یا می‌لرزد؟', 'گوشی را به شکل عدد ۸ در هوا بچرخانید تا قطب‌نما کالیبره شود. از اجسام فلزی، آهنربا و بلندگو دور شوید. موقعیت دقیق‌تر با GPS به‌دست می‌آید. در تنظیمات می‌توانید آفست دستی وارد کنید.'],
-      ['حریم خصوصی چگونه است؟', 'تمام داده‌ها (شهر، تنظیمات، قضاها، ذکرها) فقط روی گوشی شما ذخیره می‌شوند. هیچ سروری، حساب کاربری یا ارسال داده به اینترنت وجود ندارد.'],
+      ['حریم خصوصی چگونه است؟', 'تمام داده‌ها (شهر، تنظیمات، قضاها، ذکرها) فقط روی گوشی شما ذخیره می‌شوند. هیچ سروری، حساب کاربری یا ارسال داده به اینترنت وجود ندارد؛ پس احتمال هک شدن و افشای اطلاعات عملاً صفر است.'],
+      ['نسخه رسمی را از کجا نصب کنم؟', 'حتماً نسخه رسمی افق شرعی را از استورهای رسمی کافه بازار و مایکت نصب کنید. نسخه‌های غیررسمی ممکن است دستکاری‌شده یا آلوده به ویروس باشند و تیم برنامه‌نویسی B-Z هیچ مسئولیتی در قبال نسخه‌های غیررسمی و ویروسی نمی‌پذیرد.'],
       ['چطور شهر را عوض کنم؟', 'از صفحه اصلی روی نام شهر بزنید یا از تنظیمات > شهر و موقعیت. می‌توانید استان را فیلتر کنید، به علاقه‌مندی‌ها اضافه کنید یا با GPS شهر نزدیک را پیدا کنید.'],
       ['روش محاسبه چیست و کدام را انتخاب کنم؟', 'پیش‌فرض برای ایران «مؤسسه ژئوفیزیک دانشگاه تهران» است. روش‌های دیگر مثل MWL، ISNA، مصر، کراچی، ام‌القرى و جعفری هم موجودند. برای ایران معمولاً همان تهران بهترین است.'],
       ['چطور اذان را زودتر یا دیرتر پخش کنم؟', 'در تنظیمات اذان برای هر وقت «اصلاح دقیقه» را تنظیم کنید (مثبت یا منفی). یادآوری قبل از اذان هم جداگانه قابل تنظیم است.'],
@@ -876,7 +1209,7 @@ function renderFaq() {
       ['چطور تم و اندازه فونت را عوض کنم؟', 'از تنظیمات > نمایش و حالت: اندازه فونت، کنتراست بالا، تم‌های رنگی و حالت سالمندپسند در دسترس است.'],
       ['GPS کار نمی‌کند یا شهر اشتباه پیدا می‌کند؟', 'مجوز موقعیت را بدهید. در فضای باز امتحان کنید. اگر GPS دقیق نبود، شهر را دستی از لیست انتخاب کنید.'],
       ['صدا در حالت بی‌صدا یا Do Not Disturb پخش می‌شود؟', 'بسته به تنظیمات اندروید، اعلان‌های اولویت‌دار ممکن است در DND پخش شوند. حجم اذان را در تنظیمات برنامه و گوشی بررسی کنید.'],
-      ['برنامه اینترنت لازم دارد؟', 'خیر. محاسبه اوقات، اذان، قبله، تقویم، اذکار و همه قابلیت‌های اصلی کاملاً آفلاین هستند. اینترنت فقط برای باز کردن لینک گیت‌هاب در صفحه درباره لازم است.']
+      ['برنامه اینترنت لازم دارد؟', 'محاسبه اوقات، اذان، قبله، تقویم، اذکار و همه قابلیت‌های اصلی کاملاً آفلاین هستند. اینترنت فقط برای بارگذاری بنر تبلیغ تپسل در پایین صفحه اذان لازم است؛ اگر اینترنت نباشد فقط جای تبلیغ خالی می‌ماند و بقیه برنامه بدون مشکل کار می‌کند.']
     ];
     app.innerHTML = header('راهنما و سوالات پرتکرار', 'tools') +
       faqs.map(([q, a]) => '<section class="card"><h3>' + q + '</h3><p class="hint">' + a + '</p></section>').join('');
@@ -897,7 +1230,68 @@ function renderFaq() {
       const top = ['home', 'times', 'qibla', 'calendar', 'tools'].includes(page) ? page : (TOOLSUB.includes(page) ? 'tools' : '');
       nav.innerHTML = NAV.map(([id, icn, t]) => '<button class="' + (id === top ? 'on' : '') + (id === 'qibla' ? ' mid' : '') + '" onclick="go(\'' + id + '\')"><i>' + icn + '</i>' + t + '</button>').join('');
     }
+    syncAds();
   }
+
+  /* ---------- تبلیغات تپسل (نسخه ۲.۲.۱): تبلیغ‌های همسان درون‌محتوایی ----------
+     • صفحه اصلی: ۱ تبلیغ بین اوقات نمازها (بعد از اذان ظهر) → #adSlotHome
+     • صفحه پخش اذان: ۴ تبلیغ زیر دکمه «قطع صدا» → #adSlotAzan
+     مختصات همین دو نقطه در سه مسیر به کد بومی می‌رسد تا تبلیغ مثل یک عنصر ثابت
+     صفحه سر جایش بماند:
+       ۱) با هر اسکرول/تغییر اندازه، لحظه‌ای از طریق پل window.AzanAdsBridge.onRects
+          به بومی فرستاده می‌شود (بدون وقفهٔ نظرسنجی — سینک کامل با اسکرول)؛
+       ۲) تابع window.__azanAdRects() را کد بومی خودش هر ۲۵۰ میلی‌ثانیه می‌خواند؛
+       ۳) بعد از هر تعویض صفحه، pushAdRects در syncAds فوراً صدا زده می‌شود.
+     در بقیه صفحات این نقطه‌ها وجود ندارند و تبلیغ‌ها خودکار پنهان می‌شوند.
+     در نسخه وب (مرورگر) Native.available() برابر false است و هیچ تبلیغی ساخته نمی‌شود. */
+  function adSlotHtml(id, count) {
+    if (!Native.available()) return '';
+    const slot = '<div class="ad-slot"><span>محل نمایش تبلیغ</span></div>';
+    return '<div' + (id ? ' id="' + id + '"' : '') + ' class="ad-box">' +
+      new Array(count || 1).fill(slot).join('') + '</div>';
+  }
+  function syncAds() {
+    if (!Native.available()) return;
+    Native.adsShow();          // فقط یک‌بار راه‌اندازی می‌کند؛ جای تبلیغ‌ها را کد بومی مدیریت می‌کند
+    pushAdRects();             // مختصات همین لحظه بفرست تا تبلیغ بی‌درنگ سر جایش بنشیند
+  }
+  /* مختصات نقاط تبلیغ برای کد بومی — [چپ، بالا، عرض، ارتفاع] بر حسب پیکسل فیزیکی
+     (CSS × devicePixelRatio) تا سمت native دیگر نیاز به ضرب در density نداشته باشد. */
+  function adRectsJson() {
+    function r(id) {
+      const el = document.getElementById(id);
+      if (!el) return null;
+      const b = el.getBoundingClientRect();
+      if (b.width < 8 || b.height < 8) return null;
+      const dpr = window.devicePixelRatio || 1;
+      return [
+        Math.round(b.left * dpr),
+        Math.round(b.top * dpr),
+        Math.round(b.width * dpr),
+        Math.round(b.height * dpr)
+      ];
+    }
+    // صفحه اذان باز → فقط اسلات اذان؛ وگرنه اگر #adSlotHome در DOM باشد همان را بفرست
+    const azan = ov.hidden ? null : r('adSlotAzan');
+    const home = ov.hidden ? r('adSlotHome') : null;
+    return JSON.stringify({ home: home, azan: azan, page: page || '', setup: !!S.setupDone });
+  }
+  window.__azanAdRects = function () { return adRectsJson(); };
+  /* ارسال فوری مختصات به کد بومی — با requestAnimationFrame حداکثر یک‌بار در هر فریم */
+  let _adPushPend = false;
+  function pushAdRects() {
+    if (!Native.available()) return;
+    const b = window.AzanAdsBridge;
+    if (!b || !b.onRects) return;
+    if (_adPushPend) return;
+    _adPushPend = true;
+    (window.requestAnimationFrame || function (f) { setTimeout(f, 16); })(function () {
+      _adPushPend = false;
+      try { b.onRects(adRectsJson()); } catch (e) {}
+    });
+  }
+  window.addEventListener('scroll', pushAdRects, { passive: true });
+  window.addEventListener('resize', pushAdRects);
 
   /* ---------- live tick (GPU-friendly: minimal style writes) ---------- */
   let _ringSec = -1;
@@ -978,6 +1372,7 @@ function renderFaq() {
   const ov = document.createElement('div');
   ov.id = 'azanScreen'; ov.hidden = true;
   document.body.appendChild(ov);
+  ov.addEventListener('scroll', pushAdRects, { passive: true });   // سینک تبلیغ‌های صفحه اذان هنگام اسکرول
   let ovKey = null, ovClosed = null, ovMuted = false, ovBusy = false, ovShown = false, ovDone = false, ovHist = false, ovAwake = false;
   function awake(on) { if (ovAwake !== on) { ovAwake = on; Native.keepAwake(on); } }
   /* Closing = stop the azan, hide the screen. Triggered by the Close button or the phone's Back button. */
@@ -985,6 +1380,7 @@ function renderFaq() {
     ovClosed = ovKey; ovKey = null; ovDone = false; ov.hidden = true; ov.className = '';
     awake(false); if (stopAudio !== false) Native.stop();
     if (ovHist) { ovHist = false; try { history.back(); } catch (e) {} }
+    syncAds();                                   // بنر تپسل (اگر صفحه خانه باشد) دوباره برمی‌گردد
   }
   window.addEventListener('popstate', e => {
     ovHist = false;
@@ -993,6 +1389,30 @@ function renderFaq() {
     if (i < 0 || i >= stack.length - 1) return;                   // not one of our screens / nothing to do
     stack = stack.slice(0, i + 1); show(stack[i]);                // Back = previous menu
   });
+  const fmtMS = ms => { const t = Math.max(0, Math.round(ms / 1000)); return fa(Math.floor(t / 60) + ':' + p2(t % 60)); };
+  const azanKeyOf = name => Object.keys(SHORT).find(k => SHORT[k] === name) || '';
+  function ovBuild(s, p) {
+    const k = azanKeyOf(s.name);
+    ov.className = ''; ov.dataset.k = k || 'test';
+    ov.innerHTML = '<div class="ov-glow"></div><div class="ov-wave"></div><div class="ov-wave w2"></div><div class="ov-in">' +
+      '<div class="ov-pill">' + ic('pin') + ' ' + esc(p.name) + '</div>' +
+      '<div class="ov-icon">' + (ICON[k] || ic('moon')) + '</div>' +
+      '<div class="ov-sub">' + (s.name ? 'وقت اذان' : 'آزمایش صدای اذان') + '</div>' +
+      '<div class="ov-title">' + (s.name ? esc(s.name) : 'اذان') + '</div>' +
+      '<div id="ovClock" class="ov-clock"></div>' +
+      '<div id="ovDate" class="ov-date"></div><div id="ovDate2" class="ov-date2"></div>' +
+      '<div class="ov-prog" id="ovProg"><i id="ovBar"></i></div>' +
+      '<div class="ov-pt" id="ovPt"><span id="ovPos" dir="ltr"></span><span id="ovDur" dir="ltr"></span></div>' +
+      '<div class="ov-dua"><span class="ov-dl">صلوات</span>اللّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَآلِ مُحَمَّدٍ وَعَجِّلْ فَرَجَهُمْ</div>' +
+      '<div id="ovMsg" class="ov-msg"></div>' +
+      '<div class="ov-vol"><button class="ov-vb" id="ovVd" aria-label="کم کردن صدا">' + ic('minus') + '</button>' +
+      '<input id="ovVol" type="range" min="5" max="100" value="100" aria-label="میزان صدا">' +
+      '<button class="ov-vb" id="ovVu" aria-label="زیاد کردن صدا">' + ic('plus') + '</button></div>' +
+      '<div class="ov-btns"><button id="ovMute" class="ov-btn">' + ic('soff') + ' قطع صدا</button><button id="ovClose" class="ov-btn alt">' + ic('close') + ' بستن</button></div>' +
+      adSlotHtml('adSlotAzan', 4) +                       /* ۴ بنر زیر «قطع صدا» */
+      '<div id="ovNext" class="ov-next"></div>' +
+      '<div class="ov-hint">با پایان اذان این صفحه خودکار بسته می‌شود. برای بستن زودتر، دکمه بازگشت گوشی یا «بستن» را بزنید.</div></div>';
+  }
   async function pollAzan() {
     if (document.hidden || ovBusy) return;
     ovBusy = true;
@@ -1003,23 +1423,31 @@ function renderFaq() {
       if (!live && (ov.hidden || ovKey === null)) return;       // nothing to show
       const p = place(), g = id => document.getElementById(id);
       if (live && ovKey !== s.startedAt) {                      // a new azan started: build the screen
-        ovKey = s.startedAt; ovShown = false; ovDone = false; ov.className = '';
-        ov.innerHTML = '<div class="ov-wave"></div><div class="ov-wave w2"></div><div class="ov-in"><div class="pill">' + ic('pin') + ' ' + esc(p.name) + '</div><div class="ov-icon">' + ic('moon') + '</div>' +
-          '<div class="ov-title">' + (s.name ? 'وقت اذان ' + esc(s.name) : 'آزمایش صدای اذان') + '</div><div id="ovClock" class="ov-clock"></div>' +
-          '<div id="ovDate" class="ov-date"></div><div id="ovMsg" class="ov-msg"></div>' +
-          '<div class="ov-btns"><button id="ovMute" class="ov-btn">' + ic('soff') + ' قطع صدا</button><button id="ovClose" class="ov-btn alt">' + ic('close') + ' بستن</button></div>' +
-          '<div id="adSlotAzan" class="ad-anchor azan-ad-anchor" aria-label="تبلیغات"></div>' +
-          '<div class="ov-hint">با پایان اذان این صفحه خودکار بسته می‌شود. برای بستن زودتر، دکمه بازگشت گوشی یا «بستن» را بزنید.</div></div>';
-        ov.hidden = false;
+        ovKey = s.startedAt; ovShown = false; ovDone = false;
+        ovBuild(s, p);
+        ov.hidden = false; ov.scrollTop = 0;
         if (!ovHist) { try { history.pushState({ azan: 1 }, ''); ovHist = true; } catch (e) {} }
+        syncAds();                                // روی صفحه پخش اذان، بنر تپسل پنهان شود
       }
-      const c = cityNow(p.tz);
+      const c = cityNow(p.tz), dt = dates(p);
       g('ovClock').textContent = fa(p2(c.getUTCHours()) + ':' + p2(c.getUTCMinutes()) + ':' + p2(c.getUTCSeconds()));
-      g('ovDate').textContent = dates(p).shamsi;
+      g('ovDate').textContent = dt.shamsi;
+      g('ovDate2').textContent = dt.qamari;
+      const nx = nextPrayer(p);
+      g('ovNext').textContent = nx ? 'اذان بعدی: ' + SHORT[nx.key] + ' · ساعت ' + hm(nx.min) : '';
       if (live) {
-        awake(true); ovDone = false; ov.className = ''; ovMuted = !!s.muted;
+        awake(true); ovDone = false; ovMuted = !!s.muted;
+        ov.classList.toggle('muted', ovMuted);
         g('ovMsg').textContent = ovMuted ? 'صدا قطع شد' : '';
         if (ovShown !== ovMuted) { g('ovMute').innerHTML = ovMuted ? ic('sound') + ' پخش صدا' : ic('soff') + ' قطع صدا'; ovShown = ovMuted; }
+        const hasDur = s.dur > 0;                               // playback progress
+        g('ovProg').style.visibility = g('ovPt').style.visibility = hasDur ? 'visible' : 'hidden';
+        if (hasDur) {
+          g('ovBar').style.width = Math.min(100, Math.max(0, s.pos / s.dur * 100)) + '%';
+          g('ovPos').textContent = fmtMS(s.pos); g('ovDur').textContent = fmtMS(s.dur);
+        }
+        const vs = g('ovVol');
+        if (vs && typeof s.volume === 'number' && document.activeElement !== vs) vs.value = Math.round(s.volume * 100);
       } else {                                                  // azan finished by itself: close the screen automatically
         closeAzan(false);
       }
@@ -1039,8 +1467,17 @@ function renderFaq() {
       if (page === 'setup') return renderSetup();
       return renderCity();
     }
+    if (el.id === 'obNext') { S.obStep = Math.min(OB_STEPS.length - 1, (S.obStep || 0) + 1); save(false); renderSetup(); window.scrollTo(0, 0); return; }
+    if (el.id === 'obPrev') { S.obStep = Math.max(0, (S.obStep || 0) - 1); save(false); renderSetup(); window.scrollTo(0, 0); return; }
+    if (el.dataset.obazan) {
+      const k = el.dataset.obazan;
+      S.enabled[k] = !S.enabled[k];
+      save();
+      return renderSetup();
+    }
     if (el.id === 'setupDone') {
-      S.setupDone = true; save();
+      S.setupDone = true; S.obStep = 0; save();
+      vib('done', true);
       goRoot('home');
       return;
     }
@@ -1065,6 +1502,10 @@ function renderFaq() {
     if (el.id === 'mAdd') { const n = (window.prompt('نام مؤذن:') || '').trim(); if (n) { S.muezzins.push({ id: 'm' + Date.now(), name: n, path: '', file: '' }); save(false); renderMuezzin(); } }
     if (el.id === 'ovMute') { await Native.mute(!ovMuted); setTimeout(pollAzan, 300); }
     if (el.id === 'ovClose') closeAzan();
+    if (el.id === 'ovVd' || el.id === 'ovVu') {
+      const vs = document.getElementById('ovVol');
+      if (vs) { vs.value = Math.max(5, Math.min(100, (+vs.value || 100) + (el.id === 'ovVu' ? 10 : -10))); Native.volume(vs.value / 100); }
+    }
     if (el.id === 'nFs') Native.fullScreenSettings();
     if (el.id === 'nAsk') {
       await Native.askNotifications();
@@ -1123,8 +1564,24 @@ function renderFaq() {
     if (el.dataset.imsak) { S.showImsak = !S.showImsak; save(false); renderDisplay(); }
     if (el.dataset.midn) { S.showMidnight = !S.showMidnight; save(false); renderDisplay(); }
     if (el.dataset.amoled) { S.amoled = !S.amoled; applyUiPrefs(); save(false); renderDisplay(); }
+    if (el.dataset.rmotion) { S.reduceMotion = !S.reduceMotion; applyUiPrefs(); save(false); renderDisplay(); }
+    if (el.dataset.compact) { S.compactHome = !S.compactHome; applyUiPrefs(); save(false); renderDisplay(); }
+    if (el.dataset.dgoal) { S.dailyGoal = !(S.dailyGoal !== false); save(false); renderDisplay(); }
+    if (el.dataset.fri) { S.highlightFriday = !(S.highlightFriday !== false); applyUiPrefs(); save(false); renderDisplay(); }
+    if (el.dataset.smartn) { S.smartNotif = !(S.smartNotif !== false); save(); renderNotif(); }
+    if (el.dataset.quiet) { S.quietHours = !S.quietHours; save(); renderNotif(); }
+    if (el.dataset.ramhint) { S.ramadanHint = !(S.ramadanHint !== false); save(); renderNotif(); }
+    if (el.dataset.vibpre) { S.vibratePre = !(S.vibratePre !== false); save(); renderNotif(); }
+    if (el.dataset.preen) {
+      if (!S.preEnabled) S.preEnabled = { fajr: true, dhuhr: true, asr: true, maghrib: true, isha: true };
+      const k = el.dataset.preen;
+      S.preEnabled[k] = S.preEnabled[k] === false ? true : false;
+      save(); renderNotif();
+    }
     if (el.dataset.ramadan) { S.ramadanMode = !S.ramadanMode; save(false); renderDisplay(); }
     if (el.dataset.shake) { S.shakeDhikr = !S.shakeDhikr; save(false); renderDisplay(); }
+    if (el.dataset.vibsw) { S.vibrateQibla = !S.vibrateQibla; save(false); renderDisplay(); if (S.vibrateQibla) vib('test'); }
+    if (el.dataset.vibazan) { S.vibrateAzan = !S.vibrateAzan; save(); renderAzan(); }
     if (el.id === 'namazMode') {
       const key = new Date().toISOString().slice(0, 10);
       if (!S.streak) S.streak = { days: 0, last: '' };
@@ -1168,21 +1625,34 @@ function renderFaq() {
 
     if (el.id === 'dkTap') {
       S.dhikrCount = (S.dhikrCount || 0) + 1;
-      const elc = document.getElementById('dkCount');
-      if (elc) elc.textContent = fa(S.dhikrCount);
-      if (S.vibrateQibla && navigator.vibrate) navigator.vibrate(12);
-      if (S.dhikrCount >= (S.dhikrTarget || 33) && S.dhikrCount % (S.dhikrTarget || 33) === 0 && navigator.vibrate) navigator.vibrate([30, 40, 30]);
+      dhikrUpdate();
+      const d = dhikrState();
+      vib(d.tg && d.cur === d.tg ? 'done' : 'tap');
       save(false);
     }
-    if (el.id === 'dkReset') { S.dhikrCount = 0; save(false); renderDhikr(); }
-    if (el.id === 'dkVib') { S.vibrateQibla = !S.vibrateQibla; save(false); renderDhikr(); }
+    if (el.id === 'dkUndo') { S.dhikrCount = Math.max(0, (S.dhikrCount || 0) - 1); dhikrUpdate(); save(false); }
+    if (el.id === 'dkReset') {                       // two taps, so it can't be reset by accident
+      if (!el.dataset.arm) {
+        el.dataset.arm = '1'; el.textContent = 'مطمئنید؟ دوباره بزنید';
+        setTimeout(() => { if (el.isConnected) { delete el.dataset.arm; el.textContent = 'صفر کردن'; } }, 3000);
+      } else { S.dhikrCount = 0; save(false); renderDhikr(); }
+    }
+    if (el.dataset.dktg !== undefined) { S.dhikrTarget = parseInt(el.dataset.dktg, 10) || 0; save(false); renderDhikr(); }
+    if (el.id === 'dkVib') {
+      S.vibrateQibla = !S.vibrateQibla; save(false); renderDhikr();
+      if (S.vibrateQibla) {
+        const r = await vib('test'), m = document.getElementById('dkMsg');
+        if (m && r && !r.ok) m.textContent = r.has === false ? 'این دستگاه موتور ویبره ندارد.' : 'ویبره اجرا نشد. در تنظیمات گوشی (صدا و ویبره) شدت ویبره را بررسی کنید و حالت صرفه‌جویی باتری را خاموش کنید.';
+      }
+    }
+    if (el.id === 'dkAwake') { S.dhikrAwake = S.dhikrAwake === false; save(false); renderDhikr(); syncAwake(page); }
     if (el.dataset.dk) {
       const pr = ((CONTENT && CONTENT.DHIKR_PRESETS) || []).find(x => x.id === el.dataset.dk);
-      if (pr) { S.dhikrName = pr.name; S.dhikrTarget = pr.target; S.dhikrCount = 0; save(false); renderDhikr(); }
+      if (pr) { S.dhikrName = pr.name; S.dhikrTarget = pr.target; S.dhikrCount = 0; save(false); renderDhikr(); window.scrollTo(0, 0); }
     }
     if (el.id === 'rkTap') {
       const elc = document.getElementById('rkCount');
-      if (elc) { const n = (parseInt(elc.dataset.n || '0', 10) + 1); elc.dataset.n = n; elc.textContent = fa(n); if (navigator.vibrate) navigator.vibrate(10); }
+      if (elc) { const n = (parseInt(elc.dataset.n || '0', 10) + 1); elc.dataset.n = n; elc.textContent = fa(n); vib('rakat'); }
     }
     if (el.id === 'rkReset') { const elc = document.getElementById('rkCount'); if (elc) { elc.dataset.n = 0; elc.textContent = fa(0); } }
     if (el.dataset.qada) {
@@ -1221,6 +1691,7 @@ function renderFaq() {
       });
     }
     if (e.target.id === 'vol') { S.volume = e.target.value / 100; document.getElementById('volV').textContent = fa(e.target.value) + '٪'; }
+    if (e.target.id === 'ovVol') Native.volume(e.target.value / 100);   // live volume on the azan screen
   });
   document.addEventListener('change', e => {
     if (e.target.id === 'cvType') {
@@ -1232,6 +1703,9 @@ function renderFaq() {
     }
     if (e.target.id === 'vol') save();
     if (e.target.id === 'pre') { S.pre = parseInt(e.target.value, 10); save(); }
+    if (e.target.id === 'preFajr') { S.preFajr = e.target.value === '' ? null : parseInt(e.target.value, 10); save(); }
+    if (e.target.id === 'qStart') { S.quietStart = parseInt(e.target.value, 10) || 23; save(); }
+    if (e.target.id === 'qEnd') { S.quietEnd = parseInt(e.target.value, 10) || 5; save(); }
     if (e.target.id === 'hj') { S.hijriOffset = parseInt(e.target.value, 10); save(false); }
     if (e.target.id === 'fontScale') {
       S.fontScale = parseFloat(e.target.value) || 1;
@@ -1281,27 +1755,17 @@ function renderFaq() {
     }
   });
 
-
-  // Native Tapsell overlay reads these DOM rectangles in physical screen pixels.
-  window.__azanAdRects = function () {
-    const rect = id => {
-      const el = document.getElementById(id);
-      if (!el) return null;
-      const r = el.getBoundingClientRect();
-      if (r.width < 40 || r.height < 40) return null;
-      const d = window.devicePixelRatio || 1;
-      return [r.left * d, r.top * d, r.width * d, r.height * d];
-    };
-    return JSON.stringify({ home: rect('adSlotHome'), azan: rect('adSlotAzan') });
-  };
-
   // اولین ورود: راه‌اندازی شهر و دسترسی‌ها
   applyUiPrefs();
+  if (window.matchMedia) {
+    const systemThemeQuery = window.matchMedia('(prefers-color-scheme: dark)');
+    const onSystemThemeChange = () => { if (S.themeMode === 'system') applyUiPrefs(); };
+    if (systemThemeQuery.addEventListener) systemThemeQuery.addEventListener('change', onSystemThemeChange);
+    else if (systemThemeQuery.addListener) systemThemeQuery.addListener(onSystemThemeChange);
+  }
   if (!S.setupDone) page = 'setup';
   stack = [page]; try { history.replaceState({ i: 0 }, ''); } catch (e) {}
   render();
-  // Start the native Tapsell overlay bridge once; DOM anchors control visibility and position.
-  Native.adsInit();
   if (S.setupDone) schedule();
   setInterval(tick, 1000);
   setInterval(pollAzan, 1000);
@@ -1316,9 +1780,9 @@ function renderFaq() {
     if (force > 25 && now - lastShake > 600) {
       lastShake = now;
       S.dhikrCount = (S.dhikrCount || 0) + 1;
-      const elc = document.getElementById('dkCount');
-      if (elc) elc.textContent = fa(S.dhikrCount);
-      if (S.vibrateQibla && navigator.vibrate) navigator.vibrate(10);
+      dhikrUpdate();
+      const d = dhikrState();
+      vib(d.tg && d.cur === d.tg ? 'done' : 'tap');
       save(false);
     }
   }, { passive: true });

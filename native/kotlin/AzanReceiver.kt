@@ -3,10 +3,17 @@ package com.ofoqshari.bz
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
+import androidx.core.app.NotificationManagerCompat
 import androidx.core.content.ContextCompat
 
 class AzanReceiver : BroadcastReceiver() {
     override fun onReceive(c: Context, i: Intent) {
+        // Smart notification dismiss
+        if (i.action == "com.ofoqshari.bz.DISMISS_PRE") {
+            try { NotificationManagerCompat.from(c).cancelAll() } catch (_: Exception) {}
+            return
+        }
+
         val t = i.getLongExtra("t", 0L)
         val p = AzanCore.prefs(c)
         // Duplicate-protection: never handle the same (or an older) event twice.

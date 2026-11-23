@@ -38,7 +38,7 @@ import org.json.JSONObject
 import org.json.JSONTokener
 
 /**
- * تبلیغات تپسل — نسخه ۲.۲.۵ (API دوآرگومانی native + timeout کوتاه‌تر + INTERNET)
+ * تبلیغات تپسل — نسخه ۲.۲.۶ (رفع اسلات خانه + Zone تست رسمی برای تشخیص timeout)
  *
  * چیدمان (طبق درخواست کاربر، از نسخه ۲.۲.۰):
  *   ۱) صفحه اصلی (خانه): **۱ تبلیغ بین اوقات نمازها** — بعد از ردیف «اذان ظهر»
@@ -95,6 +95,9 @@ object AzanAds {
         "6b007174728e2256843b0cb0",
         "6b0071897597d07cbabd6e9f"
     )
+    /** Zoneهای تست رسمی تپسل (مستندات) — فقط وقتی همهٔ فضاهای واقعی fail شدند امتحان می‌شوند */
+    private const val TEST_NATIVE_ZONE = "d217e3e6-0070-4120-925d-5d39d0298893"
+    private const val TEST_BANNER_ZONE = "e3d5999c-5990-4e31-8ce9-642ce040a7f4"
     private val ALL_ZONES: Array<String> = arrayOf(HOME_ZONE) + AZAN_ZONES
 
     private const val POLL_MS = 250L          // نظرسنجی ایمن مختصات اسلات‌ها
@@ -111,8 +114,10 @@ object AzanAds {
 
     /** یک جای تبلیغ (اسلات): وضعیت درخواست، تبلیغِ در حال نمایش و نگاه‌دارنده‌های نمایشی */
     private class Slot(val name: String, firstZone: String) {
+        // اول فضاهای واقعی کاربر، در انتها Zone تست رسمی تپسل برای تشخیص
         val pool: List<String> =
-            listOf(firstZone) + ALL_ZONES.filter { it != firstZone }
+            listOf(firstZone) + ALL_ZONES.filter { it != firstZone } +
+                listOf(TEST_NATIVE_ZONE, TEST_BANNER_ZONE)
         var zoneIdx = 0            // فضای جاری در pool
         var tryBanner = false      // برای فضاهای بی‌نام: اول بومی، بعد استاندارد
         var attempts = 0           // تعداد تلاش‌های پیاپی ناموفق
@@ -513,8 +518,8 @@ object AzanAds {
         val t = a.optDouble(1)
         val w = a.optDouble(2)
         val h = a.optDouble(3)
-        // حداقل ~۲۰dp ≈ ۴۰–۶۰px فیزیکی روی گوشی‌های معمول
-        if (w < 40 || h < 40) return null
+        // حداقل خیلی کم — حتی اگر کادر کوچک باشد باز هم امتحان می‌کنیم
+        if (w < 10 || h < 10) return null
         return intArrayOf(Math.round(l).toInt(), Math.round(t).toInt(), Math.round(w).toInt(), Math.round(h).toInt())
     }
 

@@ -124,15 +124,53 @@
     { id: 'custom', name: 'ذکر دلخواه', target: 33 }
   ];
 
+  /* روزهای تعطیل رسمی تقریبی (کلید ماه/روز) */
+  const HOLIDAY_SOLAR = {
+    '1/1': 1, '1/2': 1, '1/3': 1, '1/4': 1,
+    '1/12': 1, '1/13': 1,
+    '3/14': 1, '3/15': 1,
+    '11/22': 1,
+    '12/29': 1
+  };
+  const HOLIDAY_LUNAR = {
+    '1/9': 1,   // تاسوعا
+    '1/10': 1,  // عاشورا
+    '2/20': 1,  // اربعین
+    '2/28': 1,  // رحلت پیامبر
+    '3/8': 1,   // شهادت امام حسن عسکری
+    '3/17': 1,  // میلاد پیامبر
+    '6/3': 1,   // شهادت فاطمه (روایت)
+    '7/13': 1,  // ولادت امام علی
+    '7/27': 1,  // مبعث
+    '8/15': 1,  // نیمه شعبان (در برخی سال‌ها)
+    '10/1': 1,  // عید فطر
+    '10/2': 1,  // دوم فطر (گاهی)
+    '12/9': 1,  // عرفه (گاهی نیمه‌تعطیل)
+    '12/10': 1, // عید قربان
+    '12/18': 1  // غدیر
+  };
+
   function occFor(shamsiMD, lunarMD) {
     const out = [];
-    if (OCC_SOLAR[shamsiMD]) out.push({ type: 'ملی/شمسی', text: OCC_SOLAR[shamsiMD] });
-    if (OCC_LUNAR[lunarMD]) out.push({ type: 'مذهبی/قمری', text: OCC_LUNAR[lunarMD] });
+    if (OCC_SOLAR[shamsiMD]) {
+      out.push({
+        type: 'ملی/شمسی',
+        text: OCC_SOLAR[shamsiMD],
+        holiday: !!HOLIDAY_SOLAR[shamsiMD]
+      });
+    }
+    if (OCC_LUNAR[lunarMD]) {
+      out.push({
+        type: 'مذهبی/قمری',
+        text: OCC_LUNAR[lunarMD],
+        holiday: !!HOLIDAY_LUNAR[lunarMD]
+      });
+    }
     return out;
   }
 
   root.CONTENT = {
-    OCC_LUNAR, OCC_SOLAR, ADHKAR_MORNING, ADHKAR_EVENING, DUA_SHORT, NAMES99,
+    OCC_LUNAR, OCC_SOLAR, HOLIDAY_SOLAR, HOLIDAY_LUNAR, ADHKAR_MORNING, ADHKAR_EVENING, DUA_SHORT, NAMES99,
     WUDU, PRAYER_STEPS, DHIKR_PRESETS, occFor
   };
 })(this);
