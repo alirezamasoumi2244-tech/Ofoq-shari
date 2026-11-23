@@ -433,3 +433,21 @@ body.elder .cday small,body.elder .cal-leg{display:none}
 body.elder .cday b{font-size:1.15rem}
 body.elder .hero2 .focus-name{font-size:1.9rem}
 body.elder .ibtn{width:52px;height:52px}
+
+
+/* Native Tapsell banner slots; actual ads are rendered by the Android overlay. */
+.ad-anchor {
+  display: block;
+  width: 100%;
+  height: 110px;
+  margin: 10px 0;
+  pointer-events: none;
+}
+.azan-ad-anchor {
+  height: 400px; /* four 50dp banner rows on standard-density layouts */
+  margin: 12px 0;
+}
+#azanScreen {
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+}
