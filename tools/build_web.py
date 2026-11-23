@@ -13,30 +13,20 @@ def rep(old, new, required=True):
     if n:
         app = app.replace(old, new)
 
-# Web-only hint at the end of the home screen (anchor updated for app.js >= 1.9)
-rep("    };\n  }\n  function renderTimes() {",
-    "    };\n    app.insertAdjacentHTML('beforeend', '<p class=\"hint\">توجه: این نسخه وب است: برای پخش خودکار اذان، این صفحه باید باز بماند و صفحه گوشی قفل نشود (در «اعلان‌ها» گزینه روشن ماندن صفحه را بزنید). اگر گوشی قفل شود یا مرورگر بسته شود، اذان پخش نمی‌شود.</p>');\n  }\n  function renderTimes() {")
+# Web-only hint on home screen
+rep("    tick();\n  }\n  function renderTimes",
+    "    app.insertAdjacentHTML('beforeend', '<p class=\"hint\">توجه: این نسخه وب است: برای پخش خودکار اذان، این صفحه باید باز بماند و صفحه گوشی قفل نشود (در «اعلان‌ها» گزینه روشن ماندن صفحه را بزنید). اگر گوشی قفل شود یا مرورگر بسته شود، اذان پخش نمی‌شود.</p>');\n    tick();\n  }\n  function renderTimes")
 
 # Notif page battery buttons → keep-awake toggle
 rep('<button class="btn" id="nBat">خارج کردن از محدودیت باتری</button><button class="btn alt" id="nApp">تنظیمات برنامه در اندروید</button>',
     '<button class="btn" id="nBat">روشن نگه داشتن صفحه (فعال/غیرفعال)</button>')
 
-# Setup wizard battery slide button (kept same id so the shared nBat handler still works)
+# Setup page battery button
 rep('<button class="btn alt" id="nBat">خارج کردن از محدودیت باتری</button>',
     '<button class="btn alt" id="nBat">روشن نگه داشتن صفحه (فعال/غیرفعال)</button>')
 
-# Wizard battery slide description → web-friendly text
-rep('اندروید برای صرفه‌جویی باتری ممکن است سرویس اذان را متوقف کند. با دکمه زیر اجازه دهید افق شرعی بدون محدودیت کار کند تا اذان سر وقت پخش شود.',
-    'در مرورگر، صفحه روشن می‌ماند تا اذان پخش شود؛ برای پخش مطمئن اذان، نسخه رسمی گوشی را از کافه بازار و مایکت نصب کنید.', required=False)
-
-# Wizard battery slide title → web-friendly
-rep("'<section class=\"card setup-card\"><h3>' + ic('sound') + ' خارج کردن از محدودیت باتری</h3>'",
-    "'<section class=\"card setup-card\"><h3>' + ic('sound') + ' روشن ماندن صفحه</h3>'", required=False)
-
 # Samsung autostart hint on notif page → web-friendly text
-i = app.find("'<p class=\"hint\">در سامسونگ، شیائومی، هواوی و اوپو")
-if i < 0:
-    i = app.find("'<p class=\"hint\">در گوشی‌های سامسونگ")   # older wording
+i = app.find("'<p class=\"hint\">در گوشی‌های سامسونگ")
 if i >= 0:
     j = app.index("</p>';", i) + len("</p>';")
     app = app[:i] + "'<p class=\"hint\">اعلان مرورگر روی بعضی گوشی‌ها کار نمی‌کند؛ پخش صدا و صفحه اذان داخل همین صفحه همیشه کار می‌کند. روشن ماندن صفحه باعث می‌شود گوشی قفل نشود و مصرف باتری بیشتر شود؛ بهتر است گوشی به شارژر وصل باشد.</p>';" + app[j:]

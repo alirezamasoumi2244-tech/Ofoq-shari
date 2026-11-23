@@ -1,6 +1,6 @@
 {
   "name": "ofoqshari",
-  "version": "2.2.5",
+  "version": "1.8.2",
   "description": "افق شرعی - Persian prayer times & azan app",
   "private": true,
   "scripts": {
@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@capacitor/android": "^6.2.0",
-    "@capacitor/core": "^6.2.0"
+    "@capacitor/core": "^6.2.0",
+    "tapsell-v3-cordova-plugin": "git+https://github.com/tapsellorg/TapsellSDK-CordovaPlugin.git#master"
   },
   "devDependencies": {
     "@capacitor/cli": "^6.2.0"

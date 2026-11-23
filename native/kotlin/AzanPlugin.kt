@@ -20,17 +20,12 @@ import com.getcapacitor.JSObject
 import com.getcapacitor.Plugin
 import com.getcapacitor.PluginCall
 import com.getcapacitor.PluginMethod
-import com.getcapacitor.annotation.PermissionCallback
-import com.getcapacitor.annotation.Permission
 import com.getcapacitor.annotation.ActivityCallback
 import com.getcapacitor.annotation.CapacitorPlugin
 import org.json.JSONArray
 import java.io.File
 
-@CapacitorPlugin(
-    name = "AzanPlugin",
-    permissions = [Permission(alias = "location", strings = [Manifest.permission.ACCESS_COARSE_LOCATION, Manifest.permission.ACCESS_FINE_LOCATION])]
-)
+@CapacitorPlugin(name = "AzanPlugin")
 class AzanPlugin : Plugin() {
 
     @PluginMethod
@@ -96,24 +91,6 @@ class AzanPlugin : Plugin() {
     }
 
     @PluginMethod
-    fun askLocation(call: PluginCall) {
-        val fine = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        if (fine || coarse) {
-            call.resolve(JSObject().put("granted", true).put("precise", fine))
-            return
-        }
-        requestPermissionForAlias("location", call, "locationPermsCallback")
-    }
-
-    @PermissionCallback
-    private fun locationPermsCallback(call: PluginCall) {
-        val fine = getPermissionState("location") == com.getcapacitor.PermissionState.GRANTED
-        val coarse = ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_COARSE_LOCATION) == PackageManager.PERMISSION_GRANTED
-        call.resolve(JSObject().put("granted", fine || coarse).put("precise", fine))
-    }
-
-    @PluginMethod
     fun status(call: PluginCall) {
         val pm = context.getSystemService(PowerManager::class.java)
         call.resolve(JSObject()
@@ -130,27 +107,7 @@ class AzanPlugin : Plugin() {
     fun state(call: PluginCall) {
         call.resolve(JSObject()
             .put("playing", AzanService.playing).put("muted", AzanService.muted)
-            .put("name", AzanService.name).put("startedAt", AzanService.startedAt)
-            .put("dur", AzanService.duration).put("pos", if (AzanService.playing) AzanService.position() else 0)
-            .put("volume", AzanService.volume.toDouble()))
-    }
-
-    /** Change the volume of the azan that is playing right now (0.05 – 1.0). */
-    @PluginMethod
-    fun volume(call: PluginCall) {
-        val v = (call.getFloat("v") ?: 1f).coerceIn(0.05f, 1f)
-        try { context.startService(Intent(context, AzanService::class.java).setAction(AzanService.ACTION_VOLUME).putExtra("v", v)) } catch (_: Exception) {}
-        call.resolve()
-    }
-
-    /** Native vibration. pattern = "30" or "60,70,60" (vibrate, pause, vibrate … in ms). */
-    @PluginMethod
-    fun vibrate(call: PluginCall) {
-        val raw = call.getString("pattern") ?: "30"
-        val pat = raw.split(",").mapNotNull { it.trim().toLongOrNull() }.toLongArray()
-        val has = AzanCore.vibrator(context)?.hasVibrator() == true
-        val ok = if (has) AzanCore.vibrate(context, pat) else false
-        call.resolve(JSObject().put("ok", ok).put("has", has))
+            .put("name", AzanService.name).put("startedAt", AzanService.startedAt))
     }
 
     @PluginMethod
@@ -205,32 +162,5 @@ class AzanPlugin : Plugin() {
             activity.startActivity(intent)
             call.resolve()
         } catch (e: Exception) { call.reject(e.message ?: "openUrl failed") }
-    }
-
-    /* ---------- تبلیغات تپسل (نسخه ۲.۲.۱ — بنر بومی، درون‌محتوایی) ----------
-     * صفحهٔ اصلی: ۱ تبلیغ بین اوقات نمازها · صفحهٔ پخش اذان: ۴ تبلیغ زیر «قطع صدا».
-     * هر اسلات اول تبلیغ «بنر بومی» (هم‌نوع با تبلیغ‌گاه‌های پنل) می‌خواهد و اگر
-     * فضایی بنر استاندارد بود خودکار به بنر 320×50 برمی‌گردد. جای تبلیغ‌ها را خود
-     * AzanAds با مختصات ‎#adSlotHome‎ و ‎#adSlotAzan‎ مدیریت می‌کند؛ این متد فقط
-     * موتور تبلیغ را راه می‌اندازد. */
-
-    /** روشن کردن موتور تبلیغ (idempotent؛ از هر رندر صفحهٔ وب صدا زده می‌شود). */
-    @PluginMethod
-    fun adsShow(call: PluginCall) {
-        try {
-            val wv = try { bridge?.webView } catch (_: Exception) { null }
-            AzanAds.show(activity, wv)
-            call.resolve(JSObject().put("ok", true))
-        } catch (e: Exception) {
-            // هیچ‌وقت نباید رابط کاربری را بترکاند؛ بی‌صدا رد شو
-            call.resolve(JSObject().put("ok", false).put("error", e.message ?: "ads error"))
-        }
-    }
-
-    /** دیگر کاربردی نیست (از نسخه ۲.۲.۰ جای تبلیغ‌ها خودکار است)؛ برای سازگاری نگه داشته شد. */
-    @PluginMethod
-    fun adsHide(call: PluginCall) {
-        try { AzanAds.hide() } catch (_: Exception) {}
-        call.resolve()
     }
 }
