@@ -68,6 +68,13 @@ if "kotlin-android" not in b:
     b += "\nandroid {\n    kotlinOptions { jvmTarget = '17' }\n}\n"
     open(ag, "w", encoding="utf-8").write(b)
 
+# 3b) Tapsell Mediation SDK used by native AzanAds.kt
+# The Cordova bridge is a separate legacy plugin; it does not provide the
+# ir.tapsell.mediation.* classes used by the native Kotlin implementation.
+if "ir.tapsell.mediation:tapsell:1.3.0" not in b:
+    b += "\\ndependencies {\\n    implementation 'ir.tapsell.mediation:tapsell:1.3.0'\\n}\\n"
+    open(ag, "w", encoding="utf-8").write(b)
+
 # 4) App name
 sp = os.path.join(A, "app/src/main/res/values/strings.xml")
 if os.path.exists(sp):
