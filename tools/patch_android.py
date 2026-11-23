@@ -75,6 +75,20 @@ if "ir.tapsell.mediation:tapsell:1.3.0" not in b:
     b += "\ndependencies {\n    implementation 'ir.tapsell.mediation:tapsell:1.3.0'\n}\n"
     open(ag, "w", encoding="utf-8").write(b)
 
+# 3b) Supply the Tapsell Mediation application key required by its manifest.
+# This is the app-level key from the user's Tapsell dashboard; ad-zone IDs stay in AzanAds.kt.
+if "TapsellMediationAppKey" not in b:
+    tapsell_key = "mkerkacpddbnttkiceabqptdpissipciqmojhhdkceocgbfkcchppfhpmhlemgafodclej"
+    b, count = re.subn(
+        r"(defaultConfig\\s*\\{)",
+        r"\\1\\n        manifestPlaceholders += [TapsellMediationAppKey: '" + tapsell_key + "']",
+        b,
+        count=1,
+    )
+    if count != 1:
+        sys.exit("Could not add TapsellMediationAppKey to android/app/build.gradle")
+    open(ag, "w", encoding="utf-8").write(b)
+
 # 3c) Tapsell 1.3.x pulls AndroidX Work 2.10.x, which requires API 35.
 # Upgrade AGP/Gradle to a toolchain that officially supports compileSdk 35.
 root_gradle = os.path.join(A, "build.gradle")
