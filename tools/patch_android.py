@@ -149,7 +149,7 @@ if os.path.isfile(tapsell_java):
     for method, callback in (("close", "onClose"), ("dismiss", "onDismiss"), ("replay", "replayVideo")):
         pattern = (
             r"private void " + method +
-            r"\(JSONArray args, CallbackContext callbackContext\) throws JSONException\s*\{.*?\n\s*\}"
+            r"\(JSONArray args, CallbackContext callbackContext\) throws JSONException\s*\{.*?\n\t\}"
         )
         replacement = (
             "private void " + method + "(JSONArray args, CallbackContext callbackContext) throws JSONException {\n"
