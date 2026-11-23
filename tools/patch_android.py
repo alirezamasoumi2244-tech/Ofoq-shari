@@ -139,9 +139,8 @@ else:
     print("Warning: no prebuilt icons found under native/res/mipmap-*")
 
 
-# 6) Tapsell Cordova compatibility: CordovaInterface.getActivity() is
-# exposed as AppCompatActivity in Capacitor, while TapsellAdActivity is a
-# separate Activity subclass. Widen to android.app.Activity before instanceof.
+# 6) Tapsell Cordova compatibility: widen the activity reference before
+# checking against TapsellAdActivity. This keeps the Tapsell SDK enabled.
 tapsell_java = os.path.join(
     A, "capacitor-cordova-android-plugins/src/main/java/ir/tapsell/sdk/TapsellCordovaInterface.java"
 )
@@ -150,14 +149,14 @@ if os.path.isfile(tapsell_java):
     for method, callback in (("close", "onClose"), ("dismiss", "onDismiss"), ("replay", "replayVideo")):
         pattern = (
             r"private void " + method +
-            r"\\(JSONArray args, CallbackContext callbackContext\\) throws JSONException\\s*\\{.*?\\n\\s*\\}"
+            r"\(JSONArray args, CallbackContext callbackContext\) throws JSONException\s*\{.*?\n\s*\}"
         )
         replacement = (
-            "private void " + method + "(JSONArray args, CallbackContext callbackContext) throws JSONException {\\n"
-            "        Activity activity = cordova == null ? null : cordova.getActivity();\\n"
-            "        if (activity instanceof TapsellAdActivity) {\\n"
-            "            ((TapsellAdActivity) activity)." + callback + "();\\n"
-            "        }\\n"
+            "private void " + method + "(JSONArray args, CallbackContext callbackContext) throws JSONException {\n"
+            "        Activity activity = cordova == null ? null : cordova.getActivity();\n"
+            "        if (activity instanceof TapsellAdActivity) {\n"
+            "            ((TapsellAdActivity) activity)." + callback + "();\n"
+            "        }\n"
             "    }"
         )
         t, count = re.subn(pattern, replacement, t, count=1, flags=re.S)
