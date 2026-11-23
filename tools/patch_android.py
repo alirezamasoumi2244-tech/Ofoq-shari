@@ -75,6 +75,35 @@ if "ir.tapsell.mediation:tapsell:1.3.0" not in b:
     b += "\ndependencies {\n    implementation 'ir.tapsell.mediation:tapsell:1.3.0'\n}\n"
     open(ag, "w", encoding="utf-8").write(b)
 
+# 3c) Tapsell 1.3.x pulls AndroidX Work 2.10.x, which requires API 35.
+# Upgrade AGP/Gradle to a toolchain that officially supports compileSdk 35.
+root_gradle = os.path.join(A, "build.gradle")
+if os.path.isfile(root_gradle):
+    rg_text = open(root_gradle, encoding="utf-8").read()
+    rg_text = re.sub(
+        r"(com\\.android\\.tools\\.build:gradle:)8\\.2\\.1",
+        r"\\g<1>8.6.1",
+        rg_text,
+    )
+    open(root_gradle, "w", encoding="utf-8").write(rg_text)
+
+variables_gradle = os.path.join(A, "variables.gradle")
+if os.path.isfile(variables_gradle):
+    vg = open(variables_gradle, encoding="utf-8").read()
+    vg2, n = re.subn(r"(compileSdkVersion\\s*=\\s*)\\d+", r"\\g<1>35", vg, count=1)
+    if n == 0:
+        vg2, n = re.subn(r"(compileSdkVersion\\s+)\\d+", r"\\g<1>35", vg, count=1)
+    if n:
+        open(variables_gradle, "w", encoding="utf-8").write(vg2)
+    else:
+        sys.exit("Could not set compileSdkVersion 35 in android/variables.gradle")
+
+wrapper = os.path.join(A, "gradle/wrapper/gradle-wrapper.properties")
+if os.path.isfile(wrapper):
+    wp = open(wrapper, encoding="utf-8").read()
+    wp = re.sub(r"gradle-[0-9.]+-(?:all|bin)\\.zip", "gradle-8.7-all.zip", wp)
+    open(wrapper, "w", encoding="utf-8").write(wp)
+
 # 4) App name
 sp = os.path.join(A, "app/src/main/res/values/strings.xml")
 if os.path.exists(sp):
