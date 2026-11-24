@@ -13,14 +13,13 @@ import json, os, re, shutil, sys
 #
 #    فضاهای تبلیغاتی (Zone IDs) داخل فایل native/kotlin/AzanAds.kt تنظیم شده‌اند.
 # ════════════════════════════════════════════════════════════════════════════
-TAPSELL_APP_KEY = "mkerkacpddbnttkiceabqptdpissipciqmojhhdkceocgbfkcchppfhpmhlemgafodclej"
-TAPSELL_VERSION = "2.3.3"
+ADIVERY_APP_KEY = "4a24d53f-b4ae-47dc-a3a3-7417ed51894f"
+ADIVERY_VERSION = "4.10.0"
 
-# ابزارهای اندروید — SDK تپسل به androidx.work:2.10.5 وابسته است که compileSdk 35 می‌خواهد؛
-# قالب Capacitor با compileSdk 34 و AGP 8.2.1 می‌آید و بیلد روی checkAarMetadata می‌شکند.
-AGP_VERSION = "8.7.3"     # Android Gradle Plugin — از 8.6 به بالا از compileSdk 35 پشتیبانی می‌کند
-GRADLE_VERSION = "8.9"    # حداقل Gradle لازم برای AGP 8.7
-COMPILE_SDK = 35          # compileSdk لازم برای androidx.work 2.10.5 (targetSdk همان 34 می‌ماند)
+# Android build toolchain
+AGP_VERSION = "8.7.3"
+GRADLE_VERSION = "8.9"
+COMPILE_SDK = 35
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 A = os.path.join(ROOT, "android")
@@ -83,25 +82,11 @@ else:
         m = m.replace("</manifest>", extra + "</manifest>", 1)
         open(mp, "w", encoding="utf-8").write(m)
 
-# 2b) کلید تپسل به‌صورت متادیتای مستقیم در مانیفست — علاوه بر manifestPlaceholder.
-#     SDK تپسل کلید را از متادیتای «ir.tapsell.mediation.APPLICATION_KEY» می‌خواند؛
-#     تزریق مستقل از مکانیزم placeholder باعث می‌شود حتی اگر جایگزینی placeholder
-#     در build.gradle انجام نشده باشد، کلید حتماً در APK باشد (نسخه ۲.۱.۵).
+# 2b) Remove Tapsell metadata left by earlier builds; Adivery is configured in MainActivity.
 mp = os.path.join(A, "app/src/main/AndroidManifest.xml")
 m = open(mp, encoding="utf-8").read()
-if "ir.tapsell.mediation.APPLICATION_KEY" not in m:
-    meta = ('    <meta-data\n'
-            '        android:name="ir.tapsell.mediation.APPLICATION_KEY"\n'
-            '        android:value="' + TAPSELL_APP_KEY + '" />\n')
-    m = m.replace("</application>", meta + "</application>", 1)
-    open(mp, "w", encoding="utf-8").write(m)
-    print("Tapsell App Key meta-data injected into AndroidManifest.xml")
-else:
-    m2 = re.sub(r'(android:name="ir\.tapsell\.mediation\.APPLICATION_KEY"[^>]*android:value=")[^"]*(")',
-                r"\g<1>" + TAPSELL_APP_KEY + r"\2", m, flags=re.S)
-    if m2 != m:
-        open(mp, "w", encoding="utf-8").write(m2)
-        print("Tapsell App Key meta-data updated in AndroidManifest.xml")
+m = re.sub(r'\s*<meta-data\s+android:name="ir\.tapsell[^"]*"[^>]*/>', '', m, flags=re.S)
+open(mp, "w", encoding="utf-8").write(m)
 
 # 3) Gradle: enable Kotlin
 rg = os.path.join(A, "build.gradle")
@@ -190,25 +175,19 @@ if icon_copied:
 else:
     print("Warning: no prebuilt icons found under native/res/mipmap-*")
 
-# 6) Tapsell Plus SDK — Native Banner zone IDs from the Tapsell Plus dashboard.
+# 6) Adivery Android SDK — Native ads only (no banner/interstitial fallback).
 ag = os.path.join(A, "app/build.gradle")
 b = open(ag, encoding="utf-8").read()
-
-# Remove legacy Mediation artifacts/placeholders if a generated template contains them.
-b = re.sub(r'^\s*implementation\s+["\']ir\.tapsell\.mediation(?::[^"\']+)["\']\s*\n',
-           '', b, flags=re.M)
-b = re.sub(r'^\s*manifestPlaceholders\s*\+=\s*\[TapsellMediationAppKey:[^\n]+\n',
-           '', b, flags=re.M)
-
-dependency = "implementation 'ir.tapsell.plus:tapsell-plus-sdk-android:" + TAPSELL_VERSION + "'"
-if "ir.tapsell.plus:tapsell-plus-sdk-android" not in b:
+b = re.sub(r'^\s*implementation\s+["\']ir\.tapsell[^"\']*["\']\s*\n', '', b, flags=re.M)
+b = re.sub(r'^\s*implementation\s+["\']com\.adivery:sdk:[^"\']+["\']\s*\n', '', b, flags=re.M)
+dependency = "implementation 'com.adivery:sdk:" + ADIVERY_VERSION + "'"
+if dependency not in b:
     if "dependencies {" in b:
         b = b.replace("dependencies {", "dependencies {\n    " + dependency, 1)
     else:
         b += "\n\ndependencies {\n    " + dependency + "\n}\n"
-
 open(ag, "w", encoding="utf-8").write(b)
-print("Tapsell Plus SDK applied:", app_id, "(SDK " + TAPSELL_VERSION + ")")
+print("Adivery SDK applied:", ADIVERY_APP_KEY, "(SDK " + ADIVERY_VERSION + ")")
 
 # 7) ارتقای ابزارهای اندروید — برای androidx.work:2.10.5 (وابستگی تپسل) compileSdk 35 لازم است.
 #    AGP/Gradle/compileSdk قالب Capacitor به‌طور خودکار بالا می‌بریم (idempotent).
@@ -270,4 +249,4 @@ if not bumped:
         open(ag, "w", encoding="utf-8").write(b2)
         print("compileSdk bumped to", COMPILE_SDK, "(app/build.gradle)")
 
-print("AzanGo native overlay applied for", app_id)
+print("Ofoq Shari native overlay applied for", app_id)
