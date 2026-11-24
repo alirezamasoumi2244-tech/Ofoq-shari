@@ -1233,17 +1233,9 @@ function renderFaq() {
     syncAds();
   }
 
-  /* ---------- تبلیغات تپسل (نسخه ۲.۲.۱): تبلیغ‌های همسان درون‌محتوایی ----------
-     • صفحه اصلی: ۱ تبلیغ بین اوقات نمازها (بعد از اذان ظهر) → #adSlotHome
-     • صفحه پخش اذان: ۴ تبلیغ زیر دکمه «قطع صدا» → #adSlotAzan
-     مختصات همین دو نقطه در سه مسیر به کد بومی می‌رسد تا تبلیغ مثل یک عنصر ثابت
-     صفحه سر جایش بماند:
-       ۱) با هر اسکرول/تغییر اندازه، لحظه‌ای از طریق پل window.AzanAdsBridge.onRects
-          به بومی فرستاده می‌شود (بدون وقفهٔ نظرسنجی — سینک کامل با اسکرول)؛
-       ۲) تابع window.__azanAdRects() را کد بومی خودش هر ۲۵۰ میلی‌ثانیه می‌خواند؛
-       ۳) بعد از هر تعویض صفحه، pushAdRects در syncAds فوراً صدا زده می‌شود.
-     در بقیه صفحات این نقطه‌ها وجود ندارند و تبلیغ‌ها خودکار پنهان می‌شوند.
-     در نسخه وب (مرورگر) Native.available() برابر false است و هیچ تبلیغی ساخته نمی‌شود. */
+  /* ---------- تبلیغات همسان ادیوری: هر Native view دقیقاً در جای DOM خودش ---------- 
+     کد بومی هر جایگاه را به‌عنوان فرزند خود WebView قرار می‌دهد؛ بنابراین مختصات
+     آن متعلق به محتوای صفحه است و همراه اسکرول همان فهرست حرکت می‌کند. */
   function adSlotHtml(id, count) {
     if (!Native.available()) return '';
     const slot = '<div class="ad-slot"><span>محل نمایش تبلیغ</span></div>';
@@ -1255,22 +1247,28 @@ function renderFaq() {
     Native.adsShow();          // فقط یک‌بار راه‌اندازی می‌کند؛ جای تبلیغ‌ها را کد بومی مدیریت می‌کند
     pushAdRects();             // مختصات همین لحظه بفرست تا تبلیغ بی‌درنگ سر جایش بنشیند
   }
-  /* مختصات نقاط تبلیغ برای کد بومی — [چپ، بالا، عرض، ارتفاع] بر حسب پیکسل فیزیکی
-     (CSS × devicePixelRatio) تا سمت native دیگر نیاز به ضرب در density نداشته باشد. */
+  /* مختصات هر جایگاه به مختصات محتوای WebView تبدیل می‌شود. */
   function adRectsJson() {
     function rect(el) {
       if (!el) return null;
       const b = el.getBoundingClientRect();
       if (b.width < 8 || b.height < 8) return null;
-      // Send CSS pixels; Android converts to physical pixels exactly once.
-      return [b.left, b.top, b.width, b.height].map(v => Math.round(v * 100) / 100);
+      return [
+        b.left + window.scrollX,
+        b.top + window.scrollY,
+        b.width,
+        b.height
+      ].map(v => Math.round(v * 100) / 100);
     }
     function one(id) {
       const host = document.getElementById(id);
       return rect(host && (host.querySelector('.ad-slot') || host));
     }
-    // The Android LinearLayout uses this complete measured rectangle for its four weighted Native views.
-    const azan = ov.hidden ? null : rect(document.getElementById('adSlotAzan'));
+    function many(id) {
+      const host = document.getElementById(id);
+      return host ? Array.from(host.querySelectorAll('.ad-slot')).map(rect) : [];
+    }
+    const azan = ov.hidden ? null : many('adSlotAzan');
     const home = ov.hidden ? one('adSlotHome') : null;
     return JSON.stringify({ home: home, azan: azan, page: page || '', setup: !!S.setupDone });
   }
