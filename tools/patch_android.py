@@ -93,7 +93,7 @@ rg = os.path.join(A, "build.gradle")
 g = open(rg, encoding="utf-8").read()
 if "kotlin-gradle-plugin" not in g:
     g, n = re.subn(r"(\n\s*classpath\s+['\"]com\.android\.tools\.build:gradle:[^'\"]+['\"])",
-                   r"\1\n        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:1.9.22'", g, count=1)
+                   r"\1\n        classpath 'org.jetbrains.kotlin:kotlin-gradle-plugin:2.1.10'", g, count=1)
     if n == 0:
         sys.exit("Could not patch android/build.gradle - add the Kotlin classpath manually (see README).")
     open(rg, "w", encoding="utf-8").write(g)
