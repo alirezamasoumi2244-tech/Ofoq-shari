@@ -3,7 +3,7 @@
 import json, os, re, shutil, sys
 
 # ════════════════════════════════════════════════════════════════════════════
-# تبلیغات تپسل — بنر بومی + بنر استاندارد درون‌محتوایی (از نسخهٔ ۲.۲.۱)
+# تبلیغات تپسل — فقط بنر بومی (Native Banner)
 #
 # ✅ شناسه اپلیکیشن (App Key) تپسل از نسخه ۲.۱.۱ وارد شده است؛ دیگر نیازی به
 #    کار دستی نیست. اگر روزی خواستید کلید را عوض کنید، همین خط پایین را ویرایش
@@ -190,7 +190,7 @@ if icon_copied:
 else:
     print("Warning: no prebuilt icons found under native/res/mipmap-*")
 
-# 6) Tapsell Plus SDK — zone IDs from the Tapsell Plus dashboard.
+# 6) Tapsell Plus SDK — Native Banner zone IDs from the Tapsell Plus dashboard.
 ag = os.path.join(A, "app/build.gradle")
 b = open(ag, encoding="utf-8").read()
 
