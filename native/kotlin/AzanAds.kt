@@ -266,7 +266,7 @@ object AzanAds {
     }
 
     private fun showError(slot: Slot, reason: String) {
-        slot.status?.text="فعلاً تبلیغی در دسترس نیست"
+        slot.status?.text = "خطای ادیوری: " + reason.take(140)
         slot.status?.visibility=View.VISIBLE
         slot.lastError=reason
     }
