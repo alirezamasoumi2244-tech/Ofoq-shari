@@ -1292,8 +1292,7 @@ function renderFaq() {
   }
   window.addEventListener('scroll', pushAdRects, { passive: true });
   window.addEventListener('resize', pushAdRects);
-  // The azan screen scrolls internally (not the WebView window); keep native ad views aligned.
-  if (ov) ov.addEventListener('scroll', pushAdRects, { passive: true });
+  // The azan screen scroll listener is registered after ov is created below.
 
   /* ---------- live tick (GPU-friendly: minimal style writes) ---------- */
   let _ringSec = -1;
