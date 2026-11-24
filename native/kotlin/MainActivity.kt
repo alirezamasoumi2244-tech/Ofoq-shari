@@ -30,7 +30,7 @@ class MainActivity : BridgeActivity() {
                 }
 
                 override fun onInitializeFailed(adNetworks: AdNetworks, error: AdNetworkError) {
-                    val message = "${adNetworks.name()}: ${error.errorMessage}"
+                    val message = "${adNetworks.name}: ${error.errorMessage}"
                     Log.e("AzanAds", "Tapsell Plus initialization failed: $message")
                     AzanAds.onSdkInitFailed(message)
                 }
