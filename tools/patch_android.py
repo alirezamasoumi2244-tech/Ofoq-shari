@@ -190,21 +190,22 @@ if icon_copied:
 else:
     print("Warning: no prebuilt icons found under native/res/mipmap-*")
 
-# 6) Tapsell Plus SDK — the 24-character zone IDs created in the user's Tapsell panel
-#    are Tapsell Plus IDs, so do not use Tapsell Mediation for these placements.
+# 6) Tapsell Plus SDK — zone IDs from the Tapsell Plus dashboard.
 ag = os.path.join(A, "app/build.gradle")
 b = open(ag, encoding="utf-8").read()
 
-# Remove the incompatible Mediation artifacts from older builds.
-b = re.sub(r'^\\s*implementation\\s+["\\']ir\\.tapsell\\.mediation(?::[^"\\']+)["\\']\\s*\\n',
+# Remove legacy Mediation artifacts/placeholders if a generated template contains them.
+b = re.sub(r'^\s*implementation\s+["\']ir\.tapsell\.mediation(?::[^"\']+)["\']\s*\n',
            '', b, flags=re.M)
-b = re.sub(r'^\\s*manifestPlaceholders\\s*\\+=\\s*\\[TapsellMediationAppKey:[^\\n]+\\n',
+b = re.sub(r'^\s*manifestPlaceholders\s*\+=\s*\[TapsellMediationAppKey:[^\n]+\n',
            '', b, flags=re.M)
 
+dependency = "implementation 'ir.tapsell.plus:tapsell-plus-sdk-android:" + TAPSELL_VERSION + "'"
 if "ir.tapsell.plus:tapsell-plus-sdk-android" not in b:
-    b += ("\\ndependencies {\\n"
-          "    implementation 'ir.tapsell.plus:tapsell-plus-sdk-android:" + TAPSELL_VERSION + "'\\n"
-          "}\\n")
+    if "dependencies {" in b:
+        b = b.replace("dependencies {", "dependencies {\n    " + dependency, 1)
+    else:
+        b += "\n\ndependencies {\n    " + dependency + "\n}\n"
 
 open(ag, "w", encoding="utf-8").write(b)
 print("Tapsell Plus SDK applied:", app_id, "(SDK " + TAPSELL_VERSION + ")")
