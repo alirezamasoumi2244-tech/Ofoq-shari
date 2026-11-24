@@ -14,7 +14,7 @@ import json, os, re, shutil, sys
 #    فضاهای تبلیغاتی (Zone IDs) داخل فایل native/kotlin/AzanAds.kt تنظیم شده‌اند.
 # ════════════════════════════════════════════════════════════════════════════
 TAPSELL_APP_KEY = "mkerkacpddbnttkiceabqptdpissipciqmojhhdkceocgbfkcchppfhpmhlemgafodclej"
-TAPSELL_VERSION = "1.3.0"
+TAPSELL_VERSION = "2.3.3"
 
 # ابزارهای اندروید — SDK تپسل به androidx.work:2.10.5 وابسته است که compileSdk 35 می‌خواهد؛
 # قالب Capacitor با compileSdk 34 و AGP 8.2.1 می‌آید و بیلد روی checkAarMetadata می‌شکند.
@@ -190,48 +190,24 @@ if icon_copied:
 else:
     print("Warning: no prebuilt icons found under native/res/mipmap-*")
 
-# 6) Tapsell Mediation SDK — بنر بومی/استاندارد درون‌محتوایی (صفحهٔ اصلی + صفحهٔ اذان).
-#    Adds: manifest placeholder (App Key), SDK dependencies, tapsell maven repo.
+# 6) Tapsell Plus SDK — the 24-character zone IDs created in the user's Tapsell panel
+#    are Tapsell Plus IDs, so do not use Tapsell Mediation for these placements.
 ag = os.path.join(A, "app/build.gradle")
 b = open(ag, encoding="utf-8").read()
 
-if "TapsellMediationAppKey" in b:
-    # از اجرای قبلی placeholder هست — مقدار خالی/قالبی را با کلید واقعی پر کن
-    b = re.sub(r'(TapsellMediationAppKey:\s*")[^"]*("\])',
-               '\\g<1>' + TAPSELL_APP_KEY + '\\2', b, count=1)
-elif "defaultConfig {" in b or "defaultConfig{" in b:
-    b2, n = re.subn(
-        r"(defaultConfig\s*\{)",
-        "\\1\\n        manifestPlaceholders += [TapsellMediationAppKey: \"" + TAPSELL_APP_KEY + "\"]",
-        b, count=1)
-    if n == 0:
-        print("Warning: defaultConfig{} not found in app/build.gradle — add TapsellMediationAppKey placeholder manually.")
-    else:
-        b = b2
+# Remove the incompatible Mediation artifacts from older builds.
+b = re.sub(r'^\\s*implementation\\s+["\\']ir\\.tapsell\\.mediation(?::[^"\\']+)["\\']\\s*\\n',
+           '', b, flags=re.M)
+b = re.sub(r'^\\s*manifestPlaceholders\\s*\\+=\\s*\\[TapsellMediationAppKey:[^\\n]+\\n',
+           '', b, flags=re.M)
 
-# اصلاح گروه SDK (از نسخه ۲.۱.۱): کلاس Tapsell و banner API ها در گروه
-# «ir.tapsell.mediation:tapsell» هستند؛ گروه «ir.tapsell:tapsell» فقط ماژول
-# billboard ویدیوست و کامپایل را می‌شکند. اگر از نسخه قبلی باقی مانده، جایگزین کن.
-b = b.replace('implementation "ir.tapsell:tapsell:' + TAPSELL_VERSION + '"',
-              'implementation "ir.tapsell.mediation:tapsell:' + TAPSELL_VERSION + '"')
-
-if "ir.tapsell.mediation:tapsell" not in b:
-    b += ("\n// Tapsell Mediation SDK (بنر پایین صفحه اذان) — see https://developer.tapsell.ir\n"
-          "dependencies {\n"
-          "    implementation \"ir.tapsell.mediation:tapsell:" + TAPSELL_VERSION + "\"\n"
-          "    implementation \"ir.tapsell.mediation.adapter:legacy:" + TAPSELL_VERSION + "\"\n"
-          "}\n")
-
-# Tapsell maven repository (artifacts are also mirrored on Maven Central, so this
-# is belt-and-suspenders: only inserted when a repositories{} block exists)
-repo_line = "    maven { url 'https://maven.tapsell.ir' }\n"
-if "maven.tapsell.ir" not in b and "repositories {" in b:
-    b = b.replace("repositories {", "repositories {\n" + repo_line, 1)
+if "ir.tapsell.plus:tapsell-plus-sdk-android" not in b:
+    b += ("\\ndependencies {\\n"
+          "    implementation 'ir.tapsell.plus:tapsell-plus-sdk-android:" + TAPSELL_VERSION + "'\\n"
+          "}\\n")
 
 open(ag, "w", encoding="utf-8").write(b)
-
-print("Tapsell ads applied:", app_id,
-      "(App Key " + ("SET" if TAPSELL_APP_KEY else "EMPTY — paste it into tools/patch_android.py TAPSELL_APP_KEY") + ", SDK ir.tapsell.mediation:tapsell " + TAPSELL_VERSION + ")")
+print("Tapsell Plus SDK applied:", app_id, "(SDK " + TAPSELL_VERSION + ")")
 
 # 7) ارتقای ابزارهای اندروید — برای androidx.work:2.10.5 (وابستگی تپسل) compileSdk 35 لازم است.
 #    AGP/Gradle/compileSdk قالب Capacitor به‌طور خودکار بالا می‌بریم (idempotent).
