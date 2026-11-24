@@ -12,8 +12,8 @@ import android.view.View
 import android.view.ViewGroup
 import android.webkit.JavascriptInterface
 import android.webkit.WebView
+import android.widget.AbsoluteLayout
 import android.widget.FrameLayout
-import android.widget.LinearLayout
 import android.widget.TextView
 import com.adivery.sdk.AdiveryAdListener
 import com.adivery.sdk.AdiveryNativeAdView
@@ -53,7 +53,6 @@ object AzanAds {
     private val homeSlot = Slot("home", HOME_PLACEMENT)
     private val azanSlots = AZAN_PLACEMENTS.mapIndexed { i, id -> Slot("azan${i+1}", id) }
     private val allSlots get() = listOf(homeSlot) + azanSlots
-    private var azanWrap: LinearLayout? = null
     private var attached = false
     private var bridgeAttached = false
     private var polling = false
@@ -78,7 +77,6 @@ object AzanAds {
 
     fun hide() {
         allSlots.forEach { it.visible = false; it.wrap?.visibility = View.GONE }
-        azanWrap?.visibility = View.GONE
     }
 
     fun destroy() {
@@ -94,17 +92,16 @@ object AzanAds {
             it.loading = false
             it.visible = false
         }
-        azanWrap = null
         webView = null
         activity = null
     }
 
     private fun ensureViews(act: Activity) {
-        val root = act.findViewById<ViewGroup>(android.R.id.content) ?: return
+        val wv = webView ?: findWebView(act) ?: return
         if (!attached) {
             allSlots.forEach { slot ->
                 val frame = FrameLayout(act).apply {
-                    layoutParams = FrameLayout.LayoutParams(1, 1)
+                    layoutParams = AbsoluteLayout.LayoutParams(1, 1, 0, 0)
                     visibility = View.GONE
                     background = GradientDrawable().apply {
                         setColor(Color.rgb(36, 28, 20))
@@ -162,28 +159,12 @@ object AzanAds {
                         }
                     }
                 })
-                root.addView(frame)
+                // Each SDK view is a child of the WebView and occupies its exact DOM slot.
+                wv.addView(frame, AbsoluteLayout.LayoutParams(1, 1, 0, 0))
             }
-            val box = LinearLayout(act).apply {
-                orientation = LinearLayout.VERTICAL
-                layoutParams = FrameLayout.LayoutParams(
-                    ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT
-                )
-                visibility = View.GONE
-            }
-            azanSlots.forEach { slot ->
-                val frame = slot.wrap ?: return@forEach
-                (frame.parent as? ViewGroup)?.removeView(frame)
-                box.addView(frame, LinearLayout.LayoutParams(
-                    ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f
-                ))
-            }
-            root.addView(box)
-            azanWrap = box
             attached = true
         }
-        val wv = webView
-        if (wv != null && !bridgeAttached) {
+        if (!bridgeAttached) {
             try {
                 wv.addJavascriptInterface(RectsBridge(), "AzanAdsBridge")
                 bridgeAttached = true
@@ -215,27 +196,21 @@ object AzanAds {
 
     private fun applyRects(result: String?) {
         if (!polling) return
-        val act = activity ?: return
         val wv = webView ?: return
-        val root = act.findViewById<ViewGroup>(android.R.id.content) ?: return
         var home: IntArray? = null
-        var azan: IntArray? = null
+        var azan: JSONArray? = null
         try {
             var value: Any? = JSONTokener(result ?: "null").nextValue()
             if (value is String) value = JSONTokener(value).nextValue()
             if (value is JSONObject) {
                 home = rectOf(value.optJSONArray("home"))
-                azan = rectOf(value.optJSONArray("azan"))
+                azan = value.optJSONArray("azan")
             }
         } catch (e: Exception) { Log.w(TAG, "rect parse failed: ${e.message}") }
-        val rootLoc = IntArray(2)
-        val webLoc = IntArray(2)
-        root.getLocationInWindow(rootLoc)
-        wv.getLocationInWindow(webLoc)
-        val ox = webLoc[0] - rootLoc[0]
-        val oy = webLoc[1] - rootLoc[1]
-        place(homeSlot, home, ox, oy, wv.height)
-        placeAzanBox(azan, ox, oy, wv.height)
+        place(homeSlot, home, wv.height, wv.scrollY)
+        azanSlots.forEachIndexed { index, slot ->
+            place(slot, rectOf(azan?.optJSONArray(index)), wv.height, wv.scrollY)
+        }
     }
 
     private fun rectOf(a: JSONArray?): IntArray? {
@@ -246,38 +221,33 @@ object AzanAds {
         return intArrayOf((l*d).toInt(), (t*d).toInt(), (w*d).toInt(), (h*d).toInt())
     }
 
-    private fun onScreen(r: IntArray, h: Int): Boolean {
-        val top = maxOf(r[1], 0)
-        val bottom = minOf(r[1] + r[3], h)
-        // The azan container is taller than one screen; keep it active while any card is visible.
+    private fun onScreen(r: IntArray, height: Int, scrollY: Int): Boolean {
+        val top = maxOf(r[1] - scrollY, 0)
+        val bottom = minOf(r[1] + r[3] - scrollY, height)
         return bottom - top >= 12
     }
 
-    private fun move(v: View, r: IntArray, ox: Int, oy: Int) {
-        val p=v.layoutParams
-        if (p.width!=r[2] || p.height!=r[3]) { p.width=r[2]; p.height=r[3]; v.layoutParams=p }
-        v.x=(r[0]+ox).toFloat(); v.y=(r[1]+oy).toFloat(); v.visibility=View.VISIBLE
+    @Suppress("DEPRECATION")
+    private fun move(v: View, r: IntArray) {
+        val parent = webView ?: return
+        parent.updateViewLayout(v, AbsoluteLayout.LayoutParams(r[2], r[3], r[0], r[1]))
+        v.visibility = View.VISIBLE
     }
 
-    private fun place(slot: Slot, r: IntArray?, ox: Int, oy: Int, h: Int) {
-        val frame=slot.wrap ?: return
-        if (r==null || !onScreen(r,h)) { frame.visibility=View.GONE; slot.visible=false; return }
-        move(frame,r,ox,oy)
-        if (!slot.visible) { frame.bringToFront(); frame.elevation=24f }
-        slot.visible=true
-        load(slot)
-    }
-
-    private fun placeAzanBox(r: IntArray?, ox: Int, oy: Int, h: Int) {
-        val box=azanWrap ?: return
-        if (r==null || !onScreen(r,h)) {
-            box.visibility=View.GONE
-            azanSlots.forEach { it.visible=false }
+    private fun place(slot: Slot, r: IntArray?, height: Int, scrollY: Int) {
+        val frame = slot.wrap ?: return
+        if (r == null || !onScreen(r, height, scrollY)) {
+            frame.visibility = View.GONE
+            slot.visible = false
             return
         }
-        move(box,r,ox,oy)
-        box.bringToFront(); box.elevation=24f
-        azanSlots.forEach { it.visible=true; load(it) }
+        move(frame, r)
+        if (!slot.visible) {
+            frame.bringToFront()
+            frame.elevation = 1f
+        }
+        slot.visible = true
+        load(slot)
     }
 
     private fun load(slot: Slot) {
