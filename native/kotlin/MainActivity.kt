@@ -1,7 +1,6 @@
 package com.ofoqshari.bz
 
 import android.content.Intent
-import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
@@ -22,14 +21,8 @@ class MainActivity : BridgeActivity() {
 
     private fun initializeTapsellPlus() {
         try {
-            val appInfo = packageManager.getApplicationInfo(
-                packageName, PackageManager.GET_META_DATA
-            )
-            val appKey = appInfo.metaData?.getString("ir.tapsell.mediation.APPLICATION_KEY")
-            if (appKey.isNullOrBlank()) {
-                AzanAds.onSdkInitFailed("Tapsell app key is missing from AndroidManifest metadata")
-                return
-            }
+            // Same dashboard App Key already configured in tools/patch_android.py.
+            val appKey = "mkerkacpddbnttkiceabqptdpissipciqmojhhdkceocgbfkcchppfhpmhlemgafodclej"
             TapsellPlus.initialize(this, appKey, object : TapsellPlusInitListener {
                 override fun onInitializeSuccess(adNetworks: AdNetworks) {
                     Log.i("AzanAds", "Tapsell Plus initialized: $adNetworks")
