@@ -1269,9 +1269,9 @@ function renderFaq() {
       const host = document.getElementById(id);
       return rect(host && (host.querySelector('.ad-slot') || host));
     }
-    // Each azan placement has its own rectangle and its own native ad view.
+    // The Android container has a fixed measured height and divides it equally across four native views.
     const azanHost = ov.hidden ? null : document.getElementById('adSlotAzan');
-    const azan = azanHost ? Array.from(azanHost.querySelectorAll('.ad-slot')).map(rect) : null;
+    const azan = rect(azanHost);
     const home = ov.hidden ? one('adSlotHome') : null;
     return JSON.stringify({ home: home, azan: azan, page: page || '', setup: !!S.setupDone });
   }
