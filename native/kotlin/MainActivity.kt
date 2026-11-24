@@ -13,7 +13,7 @@ class MainActivity : BridgeActivity() {
         registerPlugin(AzanPlugin::class.java)
         super.onCreate(savedInstanceState)
         try {
-            Adivery.setLoggingEnabled(false)
+            Adivery.setLoggingEnabled(true)
             Adivery.configure(application, "4a24d53f-b4ae-47dc-a3a3-7417ed51894f")
             Log.i("AzanAds", "Adivery configured")
         } catch (e: Exception) {
