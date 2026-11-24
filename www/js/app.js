@@ -1269,9 +1269,8 @@ function renderFaq() {
       const host = document.getElementById(id);
       return rect(host && (host.querySelector('.ad-slot') || host));
     }
-    // The Android container has a fixed measured height and divides it equally across four native views.
-    const azanHost = ov.hidden ? null : document.getElementById('adSlotAzan');
-    const azan = rect(azanHost);
+    // The Android LinearLayout uses this complete measured rectangle for its four weighted Native views.
+    const azan = ov.hidden ? null : rect(document.getElementById('adSlotAzan'));
     const home = ov.hidden ? one('adSlotHome') : null;
     return JSON.stringify({ home: home, azan: azan, page: page || '', setup: !!S.setupDone });
   }
