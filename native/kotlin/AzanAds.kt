@@ -247,8 +247,10 @@ object AzanAds {
     }
 
     private fun onScreen(r: IntArray, h: Int): Boolean {
-        val top=maxOf(r[1],0); val bottom=minOf(r[1]+r[3],h)
-        return bottom-top >= r[3]*0.45f
+        val top = maxOf(r[1], 0)
+        val bottom = minOf(r[1] + r[3], h)
+        // The azan container is taller than one screen; keep it active while any card is visible.
+        return bottom - top >= 12
     }
 
     private fun move(v: View, r: IntArray, ox: Int, oy: Int) {
