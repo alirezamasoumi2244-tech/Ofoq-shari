@@ -1,37 +1,55 @@
 package com.ofoqshari.bz
 
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.WindowManager
 import com.getcapacitor.BridgeActivity
-import ir.tapsell.mediation.MediationInitializationListener
-import ir.tapsell.mediation.Tapsell
+import ir.tapsell.plus.TapsellPlus
+import ir.tapsell.plus.TapsellPlusInitListener
+import ir.tapsell.plus.model.AdNetworkError
+import ir.tapsell.plus.model.AdNetworks
 
 class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
-        registerPlugin(AzanPlugin::class.java) // must be before super.onCreate
+        registerPlugin(AzanPlugin::class.java)
         super.onCreate(savedInstanceState)
-        // listener را زود ست کن تا کالبک auto-init تپسل از دست نرود
-        try {
-            Tapsell.setInitializationListener(object : MediationInitializationListener {
-                override fun onInitializationComplete() {
-                    Log.d("AzanAds", "Tapsell SDK init complete (from MainActivity)")
-                    AzanAds.onSdkReadyFromActivity()
-                }
-            })
-        } catch (e: Exception) {
-            Log.w("AzanAds", "early setInitializationListener failed: " + e.message)
-        }
+        initializeTapsellPlus()
         handleAzan(intent)
     }
 
-    /** Keep the app open and let the web UI handle Android's Back button. */
+    private fun initializeTapsellPlus() {
+        try {
+            val appInfo = packageManager.getApplicationInfo(
+                packageName, PackageManager.GET_META_DATA
+            )
+            val appKey = appInfo.metaData?.getString("ir.tapsell.mediation.APPLICATION_KEY")
+            if (appKey.isNullOrBlank()) {
+                AzanAds.onSdkInitFailed("Tapsell app key is missing from AndroidManifest metadata")
+                return
+            }
+            TapsellPlus.initialize(this, appKey, object : TapsellPlusInitListener {
+                override fun onInitializeSuccess(adNetworks: AdNetworks) {
+                    Log.i("AzanAds", "Tapsell Plus initialized: $adNetworks")
+                    AzanAds.onSdkReadyFromActivity()
+                }
+
+                override fun onInitializeFailed(adNetworks: AdNetworks, error: AdNetworkError) {
+                    val message = "${adNetworks.name()}: ${error.errorMessage}"
+                    Log.e("AzanAds", "Tapsell Plus initialization failed: $message")
+                    AzanAds.onSdkInitFailed(message)
+                }
+            })
+        } catch (e: Exception) {
+            Log.e("AzanAds", "Tapsell Plus initialization threw", e)
+            AzanAds.onSdkInitFailed(e.message ?: "initialization error")
+        }
+    }
+
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
-        // Always consume the native Back action. The web app returns to its
-        // previous screen, and stays on the home screen when there is no parent.
         bridge?.webView?.evaluateJavascript(
             "if (window.handleAndroidBack) { window.handleAndroidBack(); }",
             null
@@ -44,11 +62,17 @@ class MainActivity : BridgeActivity() {
         handleAzan(intent)
     }
 
-    /** When opened by the azan notification: show over the lock screen, wake the screen, keep it on. */
-    private fun handleAzan(i: Intent?) {
-        if (i?.getBooleanExtra("azan", false) != true) return
-        if (Build.VERSION.SDK_INT >= 27) { setShowWhenLocked(true); setTurnScreenOn(true) }
-        else window.addFlags(WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON)
+    private fun handleAzan(intent: Intent?) {
+        if (intent?.getBooleanExtra("azan", false) != true) return
+        if (Build.VERSION.SDK_INT >= 27) {
+            setShowWhenLocked(true)
+            setTurnScreenOn(true)
+        } else {
+            window.addFlags(
+                WindowManager.LayoutParams.FLAG_SHOW_WHEN_LOCKED or
+                    WindowManager.LayoutParams.FLAG_TURN_SCREEN_ON
+            )
+        }
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
     }
 
