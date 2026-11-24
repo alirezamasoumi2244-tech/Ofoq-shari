@@ -5,47 +5,28 @@ import android.os.Build
 import android.os.Bundle
 import android.util.Log
 import android.view.WindowManager
+import com.adivery.sdk.Adivery
 import com.getcapacitor.BridgeActivity
-import ir.tapsell.plus.TapsellPlus
-import ir.tapsell.plus.TapsellPlusInitListener
-import ir.tapsell.plus.model.AdNetworkError
-import ir.tapsell.plus.model.AdNetworks
 
 class MainActivity : BridgeActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         registerPlugin(AzanPlugin::class.java)
         super.onCreate(savedInstanceState)
-        initializeTapsellPlus()
-        handleAzan(intent)
-    }
-
-    private fun initializeTapsellPlus() {
         try {
-            // Same dashboard App Key already configured in tools/patch_android.py.
-            val appKey = "mkerkacpddbnttkiceabqptdpissipciqmojhhdkceocgbfkcchppfhpmhlemgafodclej"
-            TapsellPlus.initialize(this, appKey, object : TapsellPlusInitListener {
-                override fun onInitializeSuccess(adNetworks: AdNetworks) {
-                    Log.i("AzanAds", "Tapsell Plus initialized: $adNetworks")
-                    AzanAds.onSdkReadyFromActivity()
-                }
-
-                override fun onInitializeFailed(adNetworks: AdNetworks, error: AdNetworkError) {
-                    val message = "${adNetworks.name}: ${error.errorMessage}"
-                    Log.e("AzanAds", "Tapsell Plus initialization failed: $message")
-                    AzanAds.onSdkInitFailed(message)
-                }
-            })
+            Adivery.setLoggingEnabled(BuildConfig.DEBUG)
+            Adivery.configure(application, "4a24d53f-b4ae-47dc-a3a3-7417ed51894f")
+            Log.i("AzanAds", "Adivery configured")
         } catch (e: Exception) {
-            Log.e("AzanAds", "Tapsell Plus initialization threw", e)
-            AzanAds.onSdkInitFailed(e.message ?: "initialization error")
+            Log.e("AzanAds", "Adivery initialization failed", e)
         }
+        AzanAds.show(this, bridge?.webView)
+        handleAzan(intent)
     }
 
     @Suppress("DEPRECATION")
     override fun onBackPressed() {
         bridge?.webView?.evaluateJavascript(
-            "if (window.handleAndroidBack) { window.handleAndroidBack(); }",
-            null
+            "if (window.handleAndroidBack) { window.handleAndroidBack(); }", null
         )
     }
 
