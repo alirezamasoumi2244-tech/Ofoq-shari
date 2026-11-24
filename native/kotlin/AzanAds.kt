@@ -17,6 +17,7 @@ import ir.tapsell.plus.AdHolder
 import ir.tapsell.plus.AdRequestCallback
 import ir.tapsell.plus.AdShowListener
 import ir.tapsell.plus.TapsellPlus
+import ir.tapsell.plus.TapsellPlusBannerType
 import ir.tapsell.plus.model.TapsellPlusAdModel
 import ir.tapsell.plus.model.TapsellPlusErrorModel
 import org.json.JSONArray
@@ -53,7 +54,9 @@ object AzanAds {
         var requesting = false
         var visible = false
         var responseId: String? = null
+        var responseKind: String? = null
         var pendingId: String? = null
+        var pendingKind: String? = null
         var holder: AdHolder? = null
         var wrap: FrameLayout? = null
         var status: TextView? = null
@@ -137,6 +140,8 @@ object AzanAds {
             slot.responseId?.let { destroyAd(slot, it) }
             slot.responseId = null
             slot.pendingId = null
+            slot.pendingKind = null
+            slot.responseKind = null
             slot.requesting = false
             slot.visible = false
             slot.holder = null
@@ -354,8 +359,10 @@ object AzanAds {
         if (!slot.visible || slot.requesting || slot.responseId != null) return
         val pending = slot.pendingId
         if (pending != null) {
+            val kind = slot.pendingKind ?: "native"
             slot.pendingId = null
-            showAd(slot, pending)
+            slot.pendingKind = null
+            if (kind == "standard") showStandardAd(slot, pending) else showAd(slot, pending)
             return
         }
         if (!sdkReady) {
@@ -400,11 +407,13 @@ object AzanAds {
                         val id = model.responseId
                         Log.i(TAG, "[${slot.name}] ad response received")
                         if (id.isNullOrBlank()) {
-                            onRequestFailed(slot, "empty response id")
+                            tryStandardFallback(slot, zone, token, "native response id was empty")
                         } else if (slot.visible) {
+                            slot.responseKind = "native"
                             showAd(slot, id)
                         } else {
                             slot.pendingId = id
+                            slot.pendingKind = "native"
                         }
                     }
                 }
@@ -414,19 +423,119 @@ object AzanAds {
                         if (!slot.requesting || slot.requestToken != token) return@post
                         cancel(slot)
                         slot.requesting = false
-                        Log.w(TAG, "[${slot.name}] request error: $message")
-                        onRequestFailed(slot, message)
+                        Log.w(TAG, "[${slot.name}] native request error: $message")
+                        tryStandardFallback(slot, zone, token, message)
                     }
                 }
             })
         } catch (e: Exception) {
             cancel(slot)
             slot.requesting = false
-            Log.e(TAG, "[${slot.name}] request threw", e)
-            onRequestFailed(slot, e.message ?: "request failed")
+            Log.e(TAG, "[${slot.name}] native request threw", e)
+            tryStandardFallback(slot, zone, token, e.message ?: "native request failed")
         }
     }
 
+    /** If a dashboard zone is standard rather than native, retry the same zone using
+     * the matching Tapsell Plus standard-banner API. */
+    private fun tryStandardFallback(slot: Slot, zone: String, token: Int, nativeError: String) {
+        if (!slot.requesting || slot.requestToken != token) return
+        cancel(slot)
+        setStatus(slot, "در حال امتحان بنر استاندارد…", nativeError)
+        Log.i(TAG, "[${slot.name}] trying standard banner for zone=$zone")
+        schedule(slot, REQUEST_TIMEOUT_MS) {
+            if (slot.requesting && slot.requestToken == token) {
+                slot.requesting = false
+                slot.requestToken++
+                onRequestFailed(slot, "native failed: $nativeError; standard banner timed out")
+            }
+        }
+        try {
+            val act = activity ?: run { slot.requesting = false; return }
+            TapsellPlus.requestStandardBannerAd(act, zone, TapsellPlusBannerType.BANNER_320x50, object : AdRequestCallback() {
+                override fun response(model: TapsellPlusAdModel) {
+                    super.response(model)
+                    main.post {
+                        if (!slot.requesting || slot.requestToken != token) return@post
+                        cancel(slot)
+                        slot.requesting = false
+                        slot.attempts = 0
+                        slot.lastError = null
+                        val id = model.responseId
+                        Log.i(TAG, "[${slot.name}] standard banner response received")
+                        if (id.isNullOrBlank()) {
+                            onRequestFailed(slot, "native failed: $nativeError; standard response id empty")
+                        } else if (slot.visible) {
+                            slot.responseKind = "standard"
+                            showStandardAd(slot, id)
+                        } else {
+                            slot.pendingId = id
+                            slot.pendingKind = "standard"
+                        }
+                    }
+                }
+                override fun error(message: String) {
+                    main.post {
+                        if (!slot.requesting || slot.requestToken != token) return@post
+                        cancel(slot)
+                        slot.requesting = false
+                        Log.w(TAG, "[${slot.name}] standard banner request error: $message")
+                        onRequestFailed(slot, "native failed: $nativeError; standard failed: $message")
+                    }
+                }
+            })
+        } catch (e: Exception) {
+            cancel(slot)
+            slot.requesting = false
+            Log.e(TAG, "[${slot.name}] standard banner request threw", e)
+            onRequestFailed(slot, "native failed: $nativeError; standard threw: ${e.message}")
+        }
+    }
+
+    private fun showStandardAd(slot: Slot, responseId: String) {
+        val act = activity ?: return
+        val wrap = slot.wrap ?: run { onRequestFailed(slot, "standard banner container missing"); return }
+        try {
+            slot.responseId = responseId
+            slot.responseKind = "standard"
+            setStatus(slot, "در حال نمایش بنر…", null)
+            TapsellPlus.showStandardBannerAd(act, responseId, wrap, object : AdShowListener() {
+                override fun onOpened(model: TapsellPlusAdModel) {
+                    super.onOpened(model)
+                    Log.i(TAG, "[${slot.name}] standard banner opened")
+                    main.post {
+                        setStatus(slot, null, null)
+                        schedule(slot, REFRESH_MS) {
+                            if (slot.visible) {
+                                slot.responseId?.let { destroyAd(slot, it) }
+                                slot.responseId = null
+                                slot.responseKind = null
+                                requestAd(slot)
+                            }
+                        }
+                    }
+                }
+                override fun onError(error: TapsellPlusErrorModel) {
+                    super.onError(error)
+                    val message = error.toString()
+                    Log.e(TAG, "[${slot.name}] standard banner show error: $message")
+                    main.post {
+                        cancel(slot)
+                        slot.responseId = null
+                        slot.responseKind = null
+                        destroyAd(slot, responseId)
+                        onRequestFailed(slot, message)
+                    }
+                }
+            })
+        } catch (e: Exception) {
+            slot.responseId = null
+            slot.responseKind = null
+            destroyAd(slot, responseId)
+            Log.e(TAG, "[${slot.name}] standard banner show threw", e)
+            onRequestFailed(slot, e.message ?: "standard banner show failed")
+        }
+    }
     private fun showAd(slot: Slot, responseId: String) {
         val act = activity ?: return
         val holder = slot.holder ?: run {
@@ -435,6 +544,7 @@ object AzanAds {
         }
         try {
             slot.responseId = responseId
+            slot.responseKind = "native"
             setStatus(slot, "در حال نمایش تبلیغ…", null)
             TapsellPlus.showNativeAd(act, responseId, holder, object : AdShowListener() {
                 override fun onOpened(model: TapsellPlusAdModel) {
@@ -459,6 +569,7 @@ object AzanAds {
                     main.post {
                         cancel(slot)
                         slot.responseId = null
+                        slot.responseKind = null
                         destroyAd(slot, responseId)
                         onRequestFailed(slot, message)
                     }
@@ -466,6 +577,7 @@ object AzanAds {
             })
         } catch (e: Exception) {
             slot.responseId = null
+            slot.responseKind = null
             destroyAd(slot, responseId)
             Log.e(TAG, "[${slot.name}] show threw", e)
             onRequestFailed(slot, e.message ?: "show failed")
@@ -474,6 +586,8 @@ object AzanAds {
 
     private fun onRequestFailed(slot: Slot, message: String) {
         slot.lastError = message
+        slot.responseKind = null
+        slot.pendingKind = null
         slot.attempts++
         slot.zoneIndex = (slot.zoneIndex + 1) % slot.zones.size
         Log.w(TAG, "[${slot.name}] trying next zone after failure: $message")
@@ -511,8 +625,14 @@ object AzanAds {
 
     private fun destroyAd(slot: Slot, responseId: String) {
         try {
-            activity?.let { TapsellPlus.destroyNativeBanner(it, responseId) }
-            Log.d(TAG, "[${slot.name}] native ad destroyed")
+            activity?.let { act ->
+                if (slot.responseKind == "standard") {
+                    slot.wrap?.let { TapsellPlus.destroyStandardBanner(act, responseId, it) }
+                } else {
+                    TapsellPlus.destroyNativeBanner(act, responseId)
+                }
+            }
+            Log.d(TAG, "[${slot.name}] ${slot.responseKind ?: "native"} ad destroyed")
         } catch (e: Exception) {
             Log.w(TAG, "[${slot.name}] destroy failed: ${e.message}")
         }
