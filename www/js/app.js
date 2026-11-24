@@ -1258,22 +1258,21 @@ function renderFaq() {
   /* مختصات نقاط تبلیغ برای کد بومی — [چپ، بالا، عرض، ارتفاع] بر حسب پیکسل فیزیکی
      (CSS × devicePixelRatio) تا سمت native دیگر نیاز به ضرب در density نداشته باشد. */
   function adRectsJson() {
-    function r(id) {
-      const el = document.getElementById(id);
+    function rect(el) {
       if (!el) return null;
       const b = el.getBoundingClientRect();
       if (b.width < 8 || b.height < 8) return null;
-      const dpr = window.devicePixelRatio || 1;
-      return [
-        Math.round(b.left * dpr),
-        Math.round(b.top * dpr),
-        Math.round(b.width * dpr),
-        Math.round(b.height * dpr)
-      ];
+      // Send CSS pixels; Android converts to physical pixels exactly once.
+      return [b.left, b.top, b.width, b.height].map(v => Math.round(v * 100) / 100);
     }
-    // صفحه اذان باز → فقط اسلات اذان؛ وگرنه اگر #adSlotHome در DOM باشد همان را بفرست
-    const azan = ov.hidden ? null : r('adSlotAzan');
-    const home = ov.hidden ? r('adSlotHome') : null;
+    function one(id) {
+      const host = document.getElementById(id);
+      return rect(host && (host.querySelector('.ad-slot') || host));
+    }
+    // Each azan placement has its own rectangle and its own native ad view.
+    const azanHost = ov.hidden ? null : document.getElementById('adSlotAzan');
+    const azan = azanHost ? Array.from(azanHost.querySelectorAll('.ad-slot')).map(rect) : null;
+    const home = ov.hidden ? one('adSlotHome') : null;
     return JSON.stringify({ home: home, azan: azan, page: page || '', setup: !!S.setupDone });
   }
   window.__azanAdRects = function () { return adRectsJson(); };
