@@ -522,16 +522,16 @@ object AzanAds {
                     main.post {
                         cancel(slot)
                         slot.responseId = null
-                        slot.responseKind = null
                         destroyAd(slot, responseId)
+                        slot.responseKind = null
                         onRequestFailed(slot, message)
                     }
                 }
             })
         } catch (e: Exception) {
             slot.responseId = null
-            slot.responseKind = null
             destroyAd(slot, responseId)
+            slot.responseKind = null
             Log.e(TAG, "[${slot.name}] standard banner show threw", e)
             onRequestFailed(slot, e.message ?: "standard banner show failed")
         }
