@@ -16,6 +16,7 @@
     askNotifications: () => call('askNotifications'),
     askLocation: () => call('askLocation'),
     batterySettings: () => call('batterySettings'),
+    autoStartSettings: () => call('autoStartSettings'),
     appSettings: () => call('appSettings'),
     state: () => call('state'),
     mute: on => call('mute', { on: !!on }),
