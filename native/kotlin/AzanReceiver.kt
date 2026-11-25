@@ -18,15 +18,22 @@ class AzanReceiver : BroadcastReceiver() {
         val p = AzanCore.prefs(c)
         // Duplicate-protection: never handle the same (or an older) event twice.
         if (t != 0L && t > p.getLong("last", 0L)) {
-            p.edit().putLong("last", t).apply()
             val name = i.getStringExtra("name") ?: ""
             when (i.getStringExtra("type")) {
-                "pre" -> AzanCore.notifyPre(c, name, i.getIntExtra("min", 0))
+                "pre" -> {
+                    AzanCore.notifyPre(c, name, i.getIntExtra("min", 0))
+                    p.edit().putLong("last", t).apply()
+                }
                 else -> try {
                     ContextCompat.startForegroundService(
                         c, Intent(c, AzanService::class.java).putExtra("name", name)
                     )
-                } catch (e: Exception) { android.util.Log.e("AzanGo", "cannot start service", e) }
+                    // Only consume this event after Android accepted the foreground-service start.
+                    p.edit().putLong("last", t).apply()
+                } catch (e: Exception) {
+                    // Keep the event eligible for retry instead of silently marking it as played.
+                    android.util.Log.e("AzanGo", "cannot start service; event remains pending", e)
+                }
             }
         }
         AzanCore.scheduleNext(c)
