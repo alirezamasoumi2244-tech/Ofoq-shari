@@ -441,7 +441,7 @@ body.elder .menu-tile{min-height:110px;padding:20px}
 .ad-slot span{pointer-events:none}
 /* چهار تبلیغ صفحه پخش: نوارهای کوتاه در بالای محتوا، بدون پوشاندن تصویر و کنترل‌ها */
 #azanScreen .ov-in{display:flex;flex-direction:column;align-items:stretch}
-#azanScreen #adSlotAzan{order:0;margin:4px 0 2px;display:flex;flex-direction:column;gap:3px}
+#azanScreen #adSlotAzan{order:-2;flex:0 0 auto;width:100%;margin:0 0 5px;display:flex;flex-direction:column;gap:2px}
 #azanScreen .ov-pill{order:-1;align-self:center}
 #azanScreen .ov-icon{order:1}
 #azanScreen .ov-sub,#azanScreen .ov-title,#azanScreen .ov-clock,
@@ -450,10 +450,10 @@ body.elder .menu-tile{min-height:110px;padding:20px}
 #azanScreen .ov-msg,#azanScreen .ov-vol,#azanScreen .ov-btns,
 #azanScreen .ov-next,#azanScreen .ov-hint{order:3}
 #azanScreen .ad-box{margin:4px 0 2px}
-#azanScreen .ad-slot{height:38px;min-height:38px;max-height:38px;padding:2px 8px;border-radius:9px;font-size:.62rem;color:var(--m);border-color:rgba(255,246,232,.16);background:rgba(255,255,255,.035);margin:0;overflow:hidden}
+#azanScreen .ad-slot{height:23px;min-height:23px;max-height:23px;padding:1px 7px;border-radius:7px;font-size:.58rem;color:var(--m);border-color:rgba(255,246,232,.16);background:rgba(255,255,255,.035);margin:0;overflow:hidden}
 @media (max-height:700px){
-  #azanScreen .ad-slot{height:32px;min-height:32px;max-height:32px}
-  #azanScreen .ad-box{gap:2px;margin:2px 0}
+  #azanScreen .ad-slot{height:20px;min-height:20px;max-height:20px}
+  #azanScreen .ad-box{gap:2px;margin:0 0 3px}
 }
 body[data-mode="light"] .ad-slot{border-color:var(--line);color:var(--amber2)}
 
