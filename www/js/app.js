@@ -1253,12 +1253,10 @@ function renderFaq() {
       if (!el) return null;
       const b = el.getBoundingClientRect();
       if (b.width < 8 || b.height < 8) return null;
-      return [
-        b.left + window.scrollX,
-        b.top + window.scrollY,
-        b.width,
-        b.height
-      ].map(v => Math.round(v * 100) / 100);
+      // Native ad views are children of the WebView: use viewport coordinates.
+      // getBoundingClientRect already includes page and nested-container scrolling.
+      return [b.left, b.top, b.width, b.height]
+        .map(v => Math.round(v * 100) / 100);
     }
     function one(id) {
       const host = document.getElementById(id);
@@ -1392,8 +1390,8 @@ function renderFaq() {
     const k = azanKeyOf(s.name);
     ov.className = ''; ov.dataset.k = k || 'test';
     ov.innerHTML = '<div class="ov-glow"></div><div class="ov-wave"></div><div class="ov-wave w2"></div><div class="ov-in">' +
+      adSlotHtml('adSlotAzan', 4) +                       /* نوارهای تبلیغ در ابتدای صفحه */
       '<div class="ov-pill">' + ic('pin') + ' ' + esc(p.name) + '</div>' +
-      adSlotHtml('adSlotAzan', 4) +                       /* چهار تبلیغ فشرده در بالاترین بخش صفحه */
       '<div class="ov-icon">' + (ICON[k] || ic('moon')) + '</div>' +
       '<div class="ov-sub">' + (s.name ? 'وقت اذان' : 'آزمایش صدای اذان') + '</div>' +
       '<div class="ov-title">' + (s.name ? esc(s.name) : 'اذان') + '</div>' +
