@@ -57,6 +57,9 @@ object AzanAds {
     private var bridgeAttached = false
     private var polling = false
     private var lastScrollRead = 0L
+    @Volatile private var sdkState = "وضعیت SDK هنوز ثبت نشده"
+
+    fun setSdkState(value: String) { sdkState = value }
 
     class RectsBridge {
         @JavascriptInterface fun onRects(json: String?) = onRectsFromWeb(json)
@@ -115,7 +118,9 @@ object AzanAds {
                         Gravity.CENTER
                     )
                     text = "در حال دریافت تبلیغ…"
-                    textSize = 11f
+                    textSize = 10f
+                    maxLines = 8
+                    setTextIsSelectable(true)
                     setTextColor(Color.LTGRAY)
                     gravity = Gravity.CENTER
                     setPadding(12, 4, 12, 4)
@@ -153,7 +158,7 @@ object AzanAds {
                             slot.loaded = false
                             slot.loading = false
                             slot.adView?.visibility = View.GONE
-                            showError(slot, reason)
+                            showError(slot, reason, "callback onError")
                             scheduleRetry(slot)
                             Log.e(TAG, "[${slot.name}] Adivery error: $reason")
                         }
@@ -260,15 +265,28 @@ object AzanAds {
         try { ad.loadAd() }
         catch (e: Exception) {
             slot.loading=false
-            showError(slot,e.message ?: "loadAd failed")
+            showError(slot, "${e.javaClass.simpleName}: ${e.message ?: "بدون توضیح"}", "فراخوانی loadAd")
             scheduleRetry(slot)
         }
     }
 
-    private fun showError(slot: Slot, reason: String) {
-        slot.status?.text = "خطای ادیوری: " + reason.take(140)
-        slot.status?.visibility=View.VISIBLE
-        slot.lastError=reason
+    private fun showError(slot: Slot, reason: String, stage: String) {
+        val time = java.text.SimpleDateFormat("HH:mm:ss", java.util.Locale.getDefault())
+            .format(java.util.Date())
+        val report = """
+            خطای دریافت تبلیغ
+            جایگاه: ${slot.name}
+            مرحله: $stage
+            خطا: $reason
+            شناسه جایگاه: ${slot.placementId}
+            وضعیت SDK: $sdkState
+            زمان: $time
+
+            برای ارسال گزارش، متن را لمس طولانی کن و کپی را بزن.
+        """.trimIndent()
+        slot.status?.text = report
+        slot.status?.visibility = View.VISIBLE
+        slot.lastError = reason
     }
 
     private fun scheduleRetry(slot: Slot) {
