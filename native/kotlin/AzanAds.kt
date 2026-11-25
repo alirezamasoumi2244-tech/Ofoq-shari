@@ -183,7 +183,7 @@ object AzanAds {
     }
 
     private fun applyRects(result: String?) {
-        if (!polling) return
+        if (!active) return
         val wv = webView ?: return
         var home: IntArray? = null
         var azan: JSONArray? = null
