@@ -227,10 +227,10 @@ object AzanAds {
     }
 
     private fun onScreen(r: IntArray, width: Int, height: Int, scrollX: Int, scrollY: Int): Boolean {
-        val left = maxOf(r[0] - scrollX, 0)
-        val right = minOf(r[0] + r[2] - scrollX, width)
-        val top = maxOf(r[1] - scrollY, 0)
-        val bottom = minOf(r[1] + r[3] - scrollY, height)
+        val left = maxOf(r[0], 0)
+        val right = minOf(r[0] + r[2], width)
+        val top = maxOf(r[1], 0)
+        val bottom = minOf(r[1] + r[3], height)
         return right - left >= 12 && bottom - top >= 12
     }
 
@@ -243,9 +243,9 @@ object AzanAds {
     @Suppress("DEPRECATION")
     private fun move(v: View, r: IntArray, scrollX: Int, scrollY: Int) {
         val parent = webView ?: return
-        val left = r[0] - scrollX
-        val top = r[1] - scrollY
-        parent.updateViewLayout(v, AbsoluteLayout.LayoutParams(r[2], r[3], left, top))
+        // Rectangles arrive from getBoundingClientRect(), already in WebView viewport
+        // coordinates (including nested #azanScreen scrolling). Do not subtract scroll again.
+        parent.updateViewLayout(v, AbsoluteLayout.LayoutParams(r[2], r[3], r[0], r[1]))
         v.visibility = View.VISIBLE
     }
 
