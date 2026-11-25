@@ -235,17 +235,21 @@ object AzanAds {
     }
 
     /**
-     * Ad slots are measured in document coordinates by JavaScript. Native children
-     * of a WebView use viewport coordinates, so subtract the current WebView scroll
-     * offsets before laying them out. This keeps each native ad locked to its exact
-     * in-page placeholder while scrolling, resizing, and switching screens.
+     * JavaScript reports getBoundingClientRect() in viewport coordinates.
+     * WebView child views, however, are laid out in the WebView content coordinate
+     * space and are shifted by the parent's own scroll during drawing. Add the
+     * WebView scroll offsets here to cancel that automatic shift. Nested #azanScreen
+     * scrolling is already reflected in getBoundingClientRect() and is not added again.
      */
     @Suppress("DEPRECATION")
     private fun move(v: View, r: IntArray, scrollX: Int, scrollY: Int) {
         val parent = webView ?: return
-        // Rectangles arrive from getBoundingClientRect(), already in WebView viewport
-        // coordinates (including nested #azanScreen scrolling). Do not subtract scroll again.
-        parent.updateViewLayout(v, AbsoluteLayout.LayoutParams(r[2], r[3], r[0], r[1]))
+        val contentLeft = r[0] + scrollX
+        val contentTop = r[1] + scrollY
+        parent.updateViewLayout(
+            v,
+            AbsoluteLayout.LayoutParams(r[2], r[3], contentLeft, contentTop)
+        )
         v.visibility = View.VISIBLE
     }
 
