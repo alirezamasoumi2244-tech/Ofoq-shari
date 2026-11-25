@@ -31,8 +31,6 @@ object AzanAds {
         "125131a5-5a61-4402-85e3-ef9228910bd8",
         "ca80369f-f3ef-4e91-91d4-a514706cfb9d"
     )
-    private const val POLL_MS = 250L
-    private const val SCROLL_MS = 80L
     private const val RETRY_MS = 30_000L
     private const val JS_RECTS = "window.__azanAdRects ? window.__azanAdRects() : 'null'"
 
@@ -45,6 +43,8 @@ object AzanAds {
         var adView: AdiveryNativeAdView? = null
         var status: TextView? = null
         var retry: Runnable? = null
+        var lastRect: IntArray? = null
+        var broughtToFront = false
     }
 
     private val main = Handler(Looper.getMainLooper())
@@ -55,8 +55,7 @@ object AzanAds {
     private val allSlots get() = listOf(homeSlot) + azanSlots
     private var attached = false
     private var bridgeAttached = false
-    private var polling = false
-    private var lastScrollRead = 0L
+    private var active = false
     @Volatile private var sdkState = "وضعیت SDK هنوز ثبت نشده"
 
     fun setSdkState(value: String) { sdkState = value }
@@ -72,18 +71,17 @@ object AzanAds {
         activity = act
         webView = wv ?: findWebView(act)
         ensureViews(act)
-        if (!polling) {
-            polling = true
-            main.postDelayed({ poll() }, POLL_MS)
-        }
+        active = true
+        readRectsViaJs()
     }
 
     fun hide() {
+        active = false
         allSlots.forEach { it.visible = false; it.wrap?.visibility = View.GONE }
     }
 
     fun destroy() {
-        polling = false
+        active = false
         attached = false
         allSlots.forEach {
             it.retry?.let(main::removeCallbacks)
@@ -94,6 +92,8 @@ object AzanAds {
             it.loaded = false
             it.loading = false
             it.visible = false
+            it.lastRect = null
+            it.broughtToFront = false
         }
         webView = null
         activity = null
@@ -173,13 +173,6 @@ object AzanAds {
             try {
                 wv.addJavascriptInterface(RectsBridge(), "AzanAdsBridge")
                 bridgeAttached = true
-                wv.viewTreeObserver.addOnScrollChangedListener {
-                    val now = System.currentTimeMillis()
-                    if (now - lastScrollRead >= SCROLL_MS) {
-                        lastScrollRead = now
-                        readRectsViaJs()
-                    }
-                }
             } catch (e: Exception) { Log.e(TAG, "bridge attach failed", e) }
         }
     }
@@ -187,16 +180,6 @@ object AzanAds {
     private fun readRectsViaJs() {
         try { webView?.evaluateJavascript(JS_RECTS) { applyRects(it) } }
         catch (e: Exception) { Log.w(TAG, "evaluateJavascript failed: ${e.message}") }
-    }
-
-    private fun poll() {
-        if (!polling) return
-        if (activity == null || webView == null) {
-            main.postDelayed({ poll() }, POLL_MS)
-            return
-        }
-        readRectsViaJs()
-        main.postDelayed({ poll() }, POLL_MS)
     }
 
     private fun applyRects(result: String?) {
@@ -246,11 +229,17 @@ object AzanAds {
         val parent = webView ?: return
         val contentLeft = r[0] + scrollX
         val contentTop = r[1] + scrollY
-        parent.updateViewLayout(
-            v,
-            AbsoluteLayout.LayoutParams(r[2], r[3], contentLeft, contentTop)
-        )
-        v.visibility = View.VISIBLE
+        val slot = allSlots.firstOrNull { it.wrap === v }
+        val previous = slot?.lastRect
+        if (previous == null || previous[0] != contentLeft || previous[1] != contentTop ||
+            previous[2] != r[2] || previous[3] != r[3]) {
+            parent.updateViewLayout(
+                v,
+                AbsoluteLayout.LayoutParams(r[2], r[3], contentLeft, contentTop)
+            )
+            slot?.lastRect = intArrayOf(contentLeft, contentTop, r[2], r[3])
+        }
+        if (v.visibility != View.VISIBLE) v.visibility = View.VISIBLE
     }
 
     private fun place(slot: Slot, r: IntArray?, width: Int, height: Int, scrollX: Int, scrollY: Int) {
@@ -261,9 +250,10 @@ object AzanAds {
             return
         }
         move(frame, r, scrollX, scrollY)
-        if (!slot.visible) {
+        if (!slot.broughtToFront) {
             frame.bringToFront()
             frame.elevation = 1f
+            slot.broughtToFront = true
         }
         slot.visible = true
         load(slot)
