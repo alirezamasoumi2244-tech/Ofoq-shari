@@ -15,8 +15,10 @@ class MainActivity : BridgeActivity() {
         try {
             Adivery.setLoggingEnabled(true)
             Adivery.configure(application, "4a24d53f-b4ae-47dc-a3a3-7417ed51894f")
+            AzanAds.setSdkState("configure موفق")
             Log.i("AzanAds", "Adivery configured")
         } catch (e: Exception) {
+            AzanAds.setSdkState("خطای راه‌اندازی: ${e.javaClass.simpleName}: ${e.message ?: "بدون توضیح"}")
             Log.e("AzanAds", "Adivery initialization failed", e)
         }
         AzanAds.show(this, bridge?.webView)
