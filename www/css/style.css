@@ -450,9 +450,9 @@ body.elder .menu-tile{min-height:110px;padding:20px}
 #azanScreen .ov-msg,#azanScreen .ov-vol,#azanScreen .ov-btns,
 #azanScreen .ov-next,#azanScreen .ov-hint{order:3}
 #azanScreen .ad-box{margin:4px 0 2px}
-#azanScreen .ad-slot{height:82px;min-height:82px;max-height:82px;padding:1px 7px;border-radius:9px;font-size:.68rem;color:var(--m);border-color:rgba(255,246,232,.16);background:rgba(255,255,255,.035);margin:0;overflow:hidden}
+#azanScreen .ad-slot{height:23px;min-height:23px;max-height:23px;padding:1px 7px;border-radius:7px;font-size:.58rem;color:var(--m);border-color:rgba(255,246,232,.16);background:rgba(255,255,255,.035);margin:0;overflow:hidden}
 @media (max-height:700px){
-  #azanScreen .ad-slot{height:82px;min-height:82px;max-height:82px}
+  #azanScreen .ad-slot{height:23px;min-height:23px;max-height:23px}
   #azanScreen .ad-box{gap:2px;margin:0 0 3px}
 }
 body[data-mode="light"] .ad-slot{border-color:var(--line);color:var(--amber2)}
