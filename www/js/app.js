@@ -1398,6 +1398,7 @@ function renderFaq() {
       '<div class="ov-title">' + (s.name ? esc(s.name) : 'اذان') + '</div>' +
       '<div id="ovClock" class="ov-clock"></div>' +
       '<div id="ovDate" class="ov-date"></div><div id="ovDate2" class="ov-date2"></div>' +
+      adSlotHtml('adSlotAzan', 4) +                       /* ۴ تبلیغ بالاتر، داخل قاب اصلی اذان */
       '<div class="ov-prog" id="ovProg"><i id="ovBar"></i></div>' +
       '<div class="ov-pt" id="ovPt"><span id="ovPos" dir="ltr"></span><span id="ovDur" dir="ltr"></span></div>' +
       '<div class="ov-dua"><span class="ov-dl">صلوات</span>اللّهُمَّ صَلِّ عَلَى مُحَمَّدٍ وَآلِ مُحَمَّدٍ وَعَجِّلْ فَرَجَهُمْ</div>' +
@@ -1406,7 +1407,6 @@ function renderFaq() {
       '<input id="ovVol" type="range" min="5" max="100" value="100" aria-label="میزان صدا">' +
       '<button class="ov-vb" id="ovVu" aria-label="زیاد کردن صدا">' + ic('plus') + '</button></div>' +
       '<div class="ov-btns"><button id="ovMute" class="ov-btn">' + ic('soff') + ' قطع صدا</button><button id="ovClose" class="ov-btn alt">' + ic('close') + ' بستن</button></div>' +
-      adSlotHtml('adSlotAzan', 4) +                       /* ۴ بنر زیر «قطع صدا» */
       '<div id="ovNext" class="ov-next"></div>' +
       '<div class="ov-hint">با پایان اذان این صفحه خودکار بسته می‌شود. برای بستن زودتر، دکمه بازگشت گوشی یا «بستن» را بزنید.</div></div>';
   }
