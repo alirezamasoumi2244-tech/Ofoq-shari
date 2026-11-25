@@ -212,9 +212,9 @@ object AzanAds {
                 azan = value.optJSONArray("azan")
             }
         } catch (e: Exception) { Log.w(TAG, "rect parse failed: ${e.message}") }
-        place(homeSlot, home, wv.height, wv.scrollY)
+        place(homeSlot, home, wv.width, wv.height, wv.scrollX, wv.scrollY)
         azanSlots.forEachIndexed { index, slot ->
-            place(slot, rectOf(azan?.optJSONArray(index)), wv.height, wv.scrollY)
+            place(slot, rectOf(azan?.optJSONArray(index)), wv.width, wv.height, wv.scrollX, wv.scrollY)
         }
     }
 
@@ -226,27 +226,37 @@ object AzanAds {
         return intArrayOf((l*d).toInt(), (t*d).toInt(), (w*d).toInt(), (h*d).toInt())
     }
 
-    private fun onScreen(r: IntArray, height: Int, scrollY: Int): Boolean {
+    private fun onScreen(r: IntArray, width: Int, height: Int, scrollX: Int, scrollY: Int): Boolean {
+        val left = maxOf(r[0] - scrollX, 0)
+        val right = minOf(r[0] + r[2] - scrollX, width)
         val top = maxOf(r[1] - scrollY, 0)
         val bottom = minOf(r[1] + r[3] - scrollY, height)
-        return bottom - top >= 12
+        return right - left >= 12 && bottom - top >= 12
     }
 
+    /**
+     * Ad slots are measured in document coordinates by JavaScript. Native children
+     * of a WebView use viewport coordinates, so subtract the current WebView scroll
+     * offsets before laying them out. This keeps each native ad locked to its exact
+     * in-page placeholder while scrolling, resizing, and switching screens.
+     */
     @Suppress("DEPRECATION")
-    private fun move(v: View, r: IntArray) {
+    private fun move(v: View, r: IntArray, scrollX: Int, scrollY: Int) {
         val parent = webView ?: return
-        parent.updateViewLayout(v, AbsoluteLayout.LayoutParams(r[2], r[3], r[0], r[1]))
+        val left = r[0] - scrollX
+        val top = r[1] - scrollY
+        parent.updateViewLayout(v, AbsoluteLayout.LayoutParams(r[2], r[3], left, top))
         v.visibility = View.VISIBLE
     }
 
-    private fun place(slot: Slot, r: IntArray?, height: Int, scrollY: Int) {
+    private fun place(slot: Slot, r: IntArray?, width: Int, height: Int, scrollX: Int, scrollY: Int) {
         val frame = slot.wrap ?: return
-        if (r == null || !onScreen(r, height, scrollY)) {
+        if (r == null || !onScreen(r, width, height, scrollX, scrollY)) {
             frame.visibility = View.GONE
             slot.visible = false
             return
         }
-        move(frame, r)
+        move(frame, r, scrollX, scrollY)
         if (!slot.visible) {
             frame.bringToFront()
             frame.elevation = 1f
