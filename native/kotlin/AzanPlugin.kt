@@ -5,6 +5,7 @@ import android.app.Activity
 import android.app.NotificationManager
 import android.content.ActivityNotFoundException
 import android.content.Intent
+import android.content.ComponentName
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Build
@@ -189,6 +190,27 @@ class AzanPlugin : Plugin() {
             activity.startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS))
         }
         call.resolve()
+    }
+
+    @PluginMethod
+    fun autoStartSettings(call: PluginCall) {
+        try {
+            val miui = Intent().setComponent(
+                ComponentName("com.miui.securitycenter", "com.miui.permcenter.autostart.AutoStartManagementActivity")
+            ).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            try {
+                activity.startActivity(miui)
+            } catch (_: Exception) {
+                val fallback = Intent("miui.intent.action.OP_AUTO_START")
+                    .setPackage("com.miui.securitycenter")
+                    .addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                try { activity.startActivity(fallback) }
+                catch (_: Exception) {
+                    activity.startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:" + context.packageName)))
+                }
+            }
+            call.resolve()
+        } catch (e: Exception) { call.reject(e.message ?: "auto-start settings unavailable") }
     }
 
     @PluginMethod
